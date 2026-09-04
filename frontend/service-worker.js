@@ -1,10 +1,11 @@
-// Service Worker — kešira app shell da se aplikacija otvori i bez mreže.
-// API pozivi i config.js se ne keširaju agresivno (network-first).
+// Service Worker — kešira samo statičke fajlove sa istog domena.
+// Cross-origin API (Vercel backend) SE NE PREKIDA — inače telefon vidi lažnu poruku "nema interneta".
 
-const CACHE_NAME = "servis-app-v5";
+const CACHE_NAME = "servis-app-v6";
 const APP_SHELL = [
   "./",
   "./index.html",
+  "./config.js",
   "./app.js",
   "./manifest.json",
   "./icon-192.svg",
@@ -27,27 +28,26 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const url = new URL(event.request.url);
-  const jeApiPoziv =
-    url.pathname.startsWith("/api/") || url.port === "4000" || event.request.method !== "GET";
-  const jeConfig = url.pathname.endsWith("/config.js") || url.pathname.endsWith("config.js");
 
-  if (jeApiPoziv || jeConfig) {
-    event.respondWith(
-      fetch(event.request).catch(
-        () =>
-          jeConfig
-            ? caches.match(event.request)
-            : new Response(JSON.stringify({ greska: "Nema internet konekcije. Pokušajte ponovo kad se povežete." }), {
-                headers: { "Content-Type": "application/json" },
-                status: 503,
-              })
-      )
-    );
+  // Ne diraj backend na drugom domenu (login, nalozi…)
+  if (url.origin !== self.location.origin) return;
+
+  // Service worker skriptu uvek sa mreže
+  if (url.pathname.endsWith("service-worker.js")) {
+    event.respondWith(fetch(event.request));
     return;
   }
 
-  // Network-first za HTML/JS da telefon ne ostane na staroj verziji
-  if (url.pathname.endsWith(".html") || url.pathname.endsWith(".js") || url.pathname === "/" || url.pathname.endsWith("/")) {
+  if (event.request.method !== "GET") return;
+
+  // Network-first za HTML/JS/config da telefon dobije novu verziju
+  const jeAppFajl =
+    url.pathname.endsWith(".html") ||
+    url.pathname.endsWith(".js") ||
+    url.pathname === "/" ||
+    url.pathname.endsWith("/");
+
+  if (jeAppFajl) {
     event.respondWith(
       fetch(event.request)
         .then((res) => {

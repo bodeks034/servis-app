@@ -21,19 +21,30 @@ function jeZastarelaApiAdresa(url) {
   );
 }
 
+const PRODUKCIJA_API = "https://backend-nine-pied-44.vercel.app/api";
+
 function procitajApiBase() {
+  const onVercel =
+    typeof location !== "undefined" && /\.vercel\.app$/i.test(location.hostname);
   const fromConfig = window.SERVIS_API_BASE
     ? String(window.SERVIS_API_BASE).replace(/\/$/, "")
     : "";
   const saved = (localStorage.getItem(API_KEY) || "").replace(/\/$/, "");
 
-  // Stari URL sa telefona/keša ne sme da pregazi produkcijski config
+  // Na Vercel hostu nikad ne koristi localhost — to pravi "Failed to fetch" na telefonu
+  if (onVercel && (!saved || jeZastarelaApiAdresa(saved))) {
+    const url = fromConfig && !jeZastarelaApiAdresa(fromConfig) ? fromConfig : PRODUKCIJA_API;
+    localStorage.setItem(API_KEY, url);
+    return url;
+  }
+
   if (saved && !jeZastarelaApiAdresa(saved)) return saved;
-  if (fromConfig) {
-    if (saved !== fromConfig) localStorage.setItem(API_KEY, fromConfig);
+  if (fromConfig && !jeZastarelaApiAdresa(fromConfig)) {
+    localStorage.setItem(API_KEY, fromConfig);
     return fromConfig;
   }
-  return "http://localhost:4000/api";
+  if (fromConfig) return fromConfig;
+  return onVercel ? PRODUKCIJA_API : "http://localhost:4000/api";
 }
 
 let API_BASE = procitajApiBase();
@@ -104,14 +115,26 @@ function izDatetimeLocal(val) {
 }
 
 async function api(putanja, opcije = {}) {
-  const res = await fetch(API_BASE + putanja, {
-    ...opcije,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: "Bearer " + token } : {}),
-      ...(opcije.headers || {}),
-    },
-  });
+  let res;
+  try {
+    res = await fetch(API_BASE + putanja, {
+      ...opcije,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: "Bearer " + token } : {}),
+        ...(opcije.headers || {}),
+      },
+    });
+  } catch (err) {
+    if (jeZastarelaApiAdresa(API_BASE)) {
+      throw new Error(
+        "Pogrešan API URL (localhost). Upiši: https://backend-nine-pied-44.vercel.app/api"
+      );
+    }
+    throw new Error(
+      "Ne mogu da dostignem API: " + API_BASE + ". Proveri adresu ispod forme."
+    );
+  }
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && token && putanja !== "/auth/login") {
     odjaviSe(true);
@@ -215,7 +238,14 @@ document.querySelectorAll(".login-tab").forEach((tab) => {
 });
 
 function procitajApiSaEkrana() {
-  const uneto = (document.getElementById("api-url-input").value || "").trim().replace(/\/$/, "");
+  let uneto = (document.getElementById("api-url-input").value || "").trim().replace(/\/$/, "");
+  const onVercel =
+    typeof location !== "undefined" && /\.vercel\.app$/i.test(location.hostname);
+  if (onVercel && jeZastarelaApiAdresa(uneto)) {
+    uneto = PRODUKCIJA_API;
+    const input = document.getElementById("api-url-input");
+    if (input) input.value = uneto;
+  }
   if (uneto) {
     API_BASE = uneto;
     localStorage.setItem(API_KEY, API_BASE);
