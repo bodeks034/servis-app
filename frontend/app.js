@@ -9,16 +9,39 @@ const USER_KEY = "servis_korisnik";
 const API_KEY = "servis_api_base";
 const QUEUE_KEY = "servis_offline_queue";
 
+function jeZastarelaApiAdresa(url) {
+  const u = String(url || "").toLowerCase();
+  return (
+    !u ||
+    u.includes("localhost") ||
+    u.includes("127.0.0.1") ||
+    u.includes("servis-app-phi") ||
+    u.includes("railway.app") ||
+    u.includes("onrender.com")
+  );
+}
+
 function procitajApiBase() {
-  const saved = localStorage.getItem(API_KEY);
-  if (saved) return saved.replace(/\/$/, "");
-  if (window.SERVIS_API_BASE) return String(window.SERVIS_API_BASE).replace(/\/$/, "");
+  const fromConfig = window.SERVIS_API_BASE
+    ? String(window.SERVIS_API_BASE).replace(/\/$/, "")
+    : "";
+  const saved = (localStorage.getItem(API_KEY) || "").replace(/\/$/, "");
+
+  // Stari URL sa telefona/keša ne sme da pregazi produkcijski config
+  if (saved && !jeZastarelaApiAdresa(saved)) return saved;
+  if (fromConfig) {
+    if (saved !== fromConfig) localStorage.setItem(API_KEY, fromConfig);
+    return fromConfig;
+  }
   return "http://localhost:4000/api";
 }
 
 let API_BASE = procitajApiBase();
 const apiInput = document.getElementById("api-url-input");
-if (apiInput) apiInput.value = API_BASE;
+if (apiInput) {
+  apiInput.value = API_BASE;
+  apiInput.placeholder = "https://backend-nine-pied-44.vercel.app/api";
+}
 
 let token = localStorage.getItem(TOKEN_KEY) || null;
 let trenutniKorisnik = null;
