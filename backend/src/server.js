@@ -26,8 +26,10 @@ app.use(
 );
 app.use(express.json({ limit: "4mb" })); // foto/potpis kao data URL
 
+app.get("/", (req, res) => res.json({ status: "ok", servis: "Servis Dispecer API" }));
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
 app.get("/health", (req, res) => res.json({ status: "ok" }));
+app.get("/api", (req, res) => res.json({ status: "ok", servis: "Servis Dispecer API" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/nalozi", naloziRoutes);

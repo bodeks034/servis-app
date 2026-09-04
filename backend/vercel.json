@@ -1,16 +1,4 @@
 {
-  "version": 2,
-  "buildCommand": "prisma generate",
-  "builds": [
-    {
-      "src": "src/server.js",
-      "use": "@vercel/node",
-      "config": {
-        "includeFiles": ["prisma/**"]
-      }
-    }
-  ],
-  "routes": [
-    { "src": "/(.*)", "dest": "src/server.js" }
-  ]
+  "installCommand": "npm install",
+  "buildCommand": "prisma generate"
 }
