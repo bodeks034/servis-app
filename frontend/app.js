@@ -598,23 +598,55 @@ function render() {
     btnNew.classList.add("hidden");
     btnNew.onclick = null;
 
-    const total = nalozi.length;
-    const done = nalozi.filter((n) => n.status === "zavrseno").length;
-    const critical = nalozi.filter((n) => n.prioritet === "kritican" && n.status !== "zavrseno" && n.status !== "otkazano").length;
-    const neplaceni = racuni.filter((r) => r.status !== "placen").reduce((s, r) => s + Number(r.ukupanIznos), 0);
+    const report = izracunajIzvestaj();
     let catRows = "";
-    kategorije.forEach((k) => {
-      const c = nalozi.filter((n) => n.kategorijaId === k.id).length;
-      catRows += `<div style="display:flex; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--line); font-size:13px;">
-        <span class="badge ${catBadgeClass[k.id]}">${esc(k.naziv)}</span><span class="mono">${c}</span></div>`;
+    report.poKategoriji.forEach((r) => {
+      catRows += `<tr><td>${esc(r.naziv)}</td><td class="mono">${r.ukupno}</td><td class="mono">${r.zavrseno}</td><td class="mono">${r.aktivni}</td></tr>`;
     });
-    content.innerHTML = `<div class="stats-row">
-        <div class="stat-card"><div class="label">Ukupno naloga</div><div class="value">${total}</div></div>
-        <div class="stat-card success"><div class="label">Završeno</div><div class="value">${done}</div></div>
-        <div class="stat-card danger"><div class="label">Kritični aktivni</div><div class="value">${critical}</div></div>
-        <div class="stat-card"><div class="label">Neplaćeno (iznos)</div><div class="value" style="font-size:18px;">${neplaceni.toFixed(0)}</div></div>
+    let statusRows = "";
+    report.poStatusu.forEach((r) => {
+      statusRows += `<tr><td>${esc(r.label)}</td><td class="mono">${r.broj}</td></tr>`;
+    });
+    let racunRows = "";
+    report.racuniPregled.forEach((r) => {
+      racunRows += `<tr><td class="mono">${esc(r.brojRacuna)}</td><td>${esc(r.klijent)}</td>
+        <td class="mono">${Number(r.ukupanIznos).toFixed(2)}</td><td>${esc(r.status)}</td></tr>`;
+    });
+    if (!racunRows) racunRows = `<tr><td colspan="4" class="empty">Nema računa</td></tr>`;
+    let lowRows = "";
+    report.niskaZaliha.forEach((d) => {
+      lowRows += `<tr><td class="mono">${esc(d.sifra)}</td><td>${esc(d.naziv)}</td>
+        <td class="mono low-stock">${d.zaliha}</td><td class="mono">${d.minZaliha}</td></tr>`;
+    });
+    if (!lowRows) lowRows = `<tr><td colspan="4" class="empty">Sve zalihe su OK</td></tr>`;
+
+    content.innerHTML = `
+      <div class="izvestaj-actions" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px;">
+        <button class="btn btn-primary" id="btn-izv-stampaj" style="width:auto;">Štampaj</button>
+        <button class="btn" id="btn-izv-html">Sačuvaj HTML</button>
+        <button class="btn" id="btn-izv-csv">Sačuvaj CSV</button>
       </div>
-      <div class="stat-card" style="max-width:420px;"><div class="label" style="margin-bottom:8px;">Nalozi po kategoriji</div>${catRows}</div>`;
+      <div id="izvestaj-preview">
+        <div class="stats-row">
+          <div class="stat-card"><div class="label">Ukupno naloga</div><div class="value">${report.total}</div></div>
+          <div class="stat-card success"><div class="label">Završeno</div><div class="value">${report.done}</div></div>
+          <div class="stat-card danger"><div class="label">Kritični aktivni</div><div class="value">${report.critical}</div></div>
+          <div class="stat-card"><div class="label">Neplaćeno (RSD)</div><div class="value" style="font-size:18px;">${report.neplaceni.toFixed(0)}</div></div>
+        </div>
+        <div class="section-title">Nalozi po statusu</div>
+        <table><thead><tr><th>Status</th><th>Broj</th></tr></thead><tbody>${statusRows}</tbody></table>
+        <div class="section-title">Nalozi po kategoriji</div>
+        <table><thead><tr><th>Kategorija</th><th>Ukupno</th><th>Završeno</th><th>Aktivni</th></tr></thead><tbody>${catRows}</tbody></table>
+        <div class="section-title">Računi</div>
+        <table><thead><tr><th>Broj</th><th>Klijent</th><th>Iznos</th><th>Status</th></tr></thead><tbody>${racunRows}</tbody></table>
+        <div class="section-title">Niska zaliha</div>
+        <table><thead><tr><th>Šifra</th><th>Naziv</th><th>Stanje</th><th>Min.</th></tr></thead><tbody>${lowRows}</tbody></table>
+        <p class="muted" style="margin-top:14px;">Generisano: ${esc(report.generisano)} · ${esc(report.firmaNaziv)}</p>
+      </div>`;
+
+    document.getElementById("btn-izv-stampaj").onclick = () => stampajIzvestaj(report);
+    document.getElementById("btn-izv-html").onclick = () => sacuvajIzvestajHtml(report);
+    document.getElementById("btn-izv-csv").onclick = () => sacuvajIzvestajCsv(report);
   }
 
   else if (currentView === "tim") {
@@ -675,6 +707,7 @@ function uputstvoHtml() {
       <a href="#g-nalozi">Nalozi</a>
       <a href="#g-magacin">Magacin</a>
       <a href="#g-racuni">Računi</a>
+      <a href="#g-izvestaji">Izveštaji</a>
       <a href="#g-kalendar">Kalendar</a>
       <a href="#g-tim">Tim</a>
       <a href="#g-telefon">Telefon</a>
@@ -733,6 +766,16 @@ function uputstvoHtml() {
         <li><strong>Prijem</strong> — uvećava zalihu kad stigne roba.</li>
         <li>Na detalju naloga možeš da <strong>utrošiš deo</strong> — skida se sa stanja.</li>
         <li>Crvena zaliha znači da je ispod minimuma.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-izvestaji">
+      <h3>6b. Izveštaji — štampa i čuvanje</h3>
+      <ul>
+        <li>Meni <strong>Izveštaji</strong> — pregled naloga, računa i niske zalihe.</li>
+        <li><strong>Štampaj</strong> — otvara prozor; izaberi štampač ili „Sačuvaj kao PDF“.</li>
+        <li><strong>Sačuvaj HTML</strong> — preuzima fajl koji možeš da otvoriš i štampaš kasnije.</li>
+        <li><strong>Sačuvaj CSV</strong> — za Excel / Google Sheets.</li>
       </ul>
     </div>
 
@@ -914,6 +957,192 @@ function tipPrilogaLabel(tip) {
     video: "Video",
     pdf_izvestaj: "PDF",
   }[tip] || tip;
+}
+
+function izracunajIzvestaj() {
+  const firmaNaziv = trenutniKorisnik?.firmaNaziv || trenutniKorisnik?.firma?.naziv || "Servis Dispečer";
+  const total = nalozi.length;
+  const done = nalozi.filter((n) => n.status === "zavrseno").length;
+  const critical = nalozi.filter(
+    (n) => n.prioritet === "kritican" && n.status !== "zavrseno" && n.status !== "otkazano"
+  ).length;
+  const neplaceni = racuni
+    .filter((r) => r.status !== "placen")
+    .reduce((s, r) => s + Number(r.ukupanIznos), 0);
+
+  const statusKeys = [
+    ["novo", "Novo"],
+    ["u_toku", "U toku"],
+    ["ceka_delove", "Čeka delove"],
+    ["zavrseno", "Završeno"],
+    ["otkazano", "Otkazano"],
+  ];
+  const poStatusu = statusKeys.map(([key, label]) => ({
+    key,
+    label,
+    broj: nalozi.filter((n) => n.status === key).length,
+  }));
+
+  const poKategoriji = kategorije.map((k) => {
+    const lista = nalozi.filter((n) => n.kategorijaId === k.id);
+    return {
+      naziv: k.naziv,
+      ukupno: lista.length,
+      zavrseno: lista.filter((n) => n.status === "zavrseno").length,
+      aktivni: lista.filter((n) => n.status !== "zavrseno" && n.status !== "otkazano").length,
+    };
+  });
+
+  const racuniPregled = racuni.map((r) => ({
+    brojRacuna: r.brojRacuna,
+    klijent: r.klijent?.nazivIliIme || "—",
+    ukupanIznos: r.ukupanIznos,
+    status: r.status === "placen" ? "Plaćen" : r.status === "delimicno_placen" ? "Delimično" : "Neplaćen",
+  }));
+
+  const niskaZaliha = delovi
+    .filter((d) => Number(d.ukupnoNaStanju) < Number(d.minZaliha))
+    .map((d) => ({
+      sifra: d.sifra,
+      naziv: d.naziv,
+      zaliha: d.ukupnoNaStanju,
+      minZaliha: d.minZaliha,
+    }));
+
+  return {
+    firmaNaziv,
+    generisano: new Date().toLocaleString("sr-RS"),
+    total,
+    done,
+    critical,
+    neplaceni,
+    poStatusu,
+    poKategoriji,
+    racuniPregled,
+    niskaZaliha,
+  };
+}
+
+function izvestajHtmlDokument(report) {
+  const statusRows = report.poStatusu
+    .map((r) => `<tr><td>${esc(r.label)}</td><td class="mono">${r.broj}</td></tr>`)
+    .join("");
+  const catRows = report.poKategoriji
+    .map(
+      (r) =>
+        `<tr><td>${esc(r.naziv)}</td><td class="mono">${r.ukupno}</td><td class="mono">${r.zavrseno}</td><td class="mono">${r.aktivni}</td></tr>`
+    )
+    .join("");
+  const racunRows =
+    report.racuniPregled
+      .map(
+        (r) =>
+          `<tr><td class="mono">${esc(r.brojRacuna)}</td><td>${esc(r.klijent)}</td><td class="mono right">${Number(r.ukupanIznos).toFixed(2)}</td><td>${esc(r.status)}</td></tr>`
+      )
+      .join("") || `<tr><td colspan="4">Nema računa</td></tr>`;
+  const lowRows =
+    report.niskaZaliha
+      .map(
+        (d) =>
+          `<tr><td class="mono">${esc(d.sifra)}</td><td>${esc(d.naziv)}</td><td class="mono">${d.zaliha}</td><td class="mono">${d.minZaliha}</td></tr>`
+      )
+      .join("") || `<tr><td colspan="4">Sve zalihe su OK</td></tr>`;
+
+  return `<!DOCTYPE html>
+<html lang="sr"><head><meta charset="UTF-8"><title>Izveštaj — ${esc(report.firmaNaziv)}</title>
+<style>
+  body{font-family:Segoe UI,Arial,sans-serif;color:#1B2226;margin:24px;font-size:13px;}
+  h1{font-size:20px;margin:0 0 4px;} h2{font-size:15px;margin:18px 0 8px;}
+  .muted{color:#5B666E;} .mono{font-family:Consolas,monospace;} .right{text-align:right;}
+  .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:14px 0 8px;}
+  .stat{border:1px solid #D7DCDD;border-radius:6px;padding:10px 12px;}
+  .stat .l{font-size:11px;color:#5B666E;text-transform:uppercase;}
+  .stat .v{font-size:22px;font-weight:700;font-family:Consolas,monospace;margin-top:4px;}
+  table{width:100%;border-collapse:collapse;margin-top:6px;}
+  th,td{border-bottom:1px solid #D7DCDD;padding:8px 6px;text-align:left;}
+  th{font-size:11px;text-transform:uppercase;color:#5B666E;}
+  .actions{margin-bottom:14px;}
+  .actions button{padding:8px 14px;margin-right:8px;cursor:pointer;}
+  @media print{.actions{display:none!important;} body{margin:12px;} .stats{grid-template-columns:repeat(2,1fr);}}
+  @media (max-width:700px){.stats{grid-template-columns:1fr 1fr;}}
+</style></head><body>
+<div class="actions">
+  <button onclick="window.print()">Štampaj / sačuvaj PDF</button>
+</div>
+<div class="muted">${esc(report.firmaNaziv)}</div>
+<h1>Poslovni izveštaj</h1>
+<div class="muted">Generisano: ${esc(report.generisano)}</div>
+<div class="stats">
+  <div class="stat"><div class="l">Ukupno naloga</div><div class="v">${report.total}</div></div>
+  <div class="stat"><div class="l">Završeno</div><div class="v">${report.done}</div></div>
+  <div class="stat"><div class="l">Kritični aktivni</div><div class="v">${report.critical}</div></div>
+  <div class="stat"><div class="l">Neplaćeno (RSD)</div><div class="v" style="font-size:16px;">${report.neplaceni.toFixed(2)}</div></div>
+</div>
+<h2>Nalozi po statusu</h2>
+<table><thead><tr><th>Status</th><th>Broj</th></tr></thead><tbody>${statusRows}</tbody></table>
+<h2>Nalozi po kategoriji</h2>
+<table><thead><tr><th>Kategorija</th><th>Ukupno</th><th>Završeno</th><th>Aktivni</th></tr></thead><tbody>${catRows}</tbody></table>
+<h2>Računi</h2>
+<table><thead><tr><th>Broj</th><th>Klijent</th><th>Iznos</th><th>Status</th></tr></thead><tbody>${racunRows}</tbody></table>
+<h2>Niska zaliha</h2>
+<table><thead><tr><th>Šifra</th><th>Naziv</th><th>Stanje</th><th>Min.</th></tr></thead><tbody>${lowRows}</tbody></table>
+</body></html>`;
+}
+
+function stampajIzvestaj(report) {
+  const html = izvestajHtmlDokument(report);
+  const w = window.open("", "_blank");
+  if (!w) {
+    showToast("Dozvoli iskačuće prozore za štampu.");
+    return;
+  }
+  w.document.write(html);
+  w.document.close();
+  setTimeout(() => {
+    try { w.focus(); w.print(); } catch (_) { /* ignore */ }
+  }, 250);
+}
+
+function preuzmiFajl(naziv, sadrzaj, mime) {
+  const blob = new Blob([sadrzaj], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = naziv;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function sacuvajIzvestajHtml(report) {
+  const stamp = new Date().toISOString().slice(0, 10);
+  preuzmiFajl(`izvestaj-${stamp}.html`, izvestajHtmlDokument(report), "text/html;charset=utf-8");
+  showToast("Izveštaj sačuvan (HTML).");
+}
+
+function sacuvajIzvestajCsv(report) {
+  const linije = [];
+  const q = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  linije.push("Sekcija,Polje,Vrednost");
+  linije.push(`Pregled,Ukupno naloga,${report.total}`);
+  linije.push(`Pregled,Završeno,${report.done}`);
+  linije.push(`Pregled,Kritični aktivni,${report.critical}`);
+  linije.push(`Pregled,Neplaćeno RSD,${report.neplaceni.toFixed(2)}`);
+  report.poStatusu.forEach((r) => linije.push(`Status,${q(r.label)},${r.broj}`));
+  report.poKategoriji.forEach((r) =>
+    linije.push(`Kategorija,${q(r.naziv)},ukupno=${r.ukupno};zavrseno=${r.zavrseno};aktivni=${r.aktivni}`)
+  );
+  report.racuniPregled.forEach((r) =>
+    linije.push(`Račun,${q(r.brojRacuna + " / " + r.klijent)},${Number(r.ukupanIznos).toFixed(2)} (${r.status})`)
+  );
+  report.niskaZaliha.forEach((d) =>
+    linije.push(`Niska zaliha,${q(d.sifra + " " + d.naziv)},stanje=${d.zaliha};min=${d.minZaliha}`)
+  );
+  const stamp = new Date().toISOString().slice(0, 10);
+  // BOM za Excel na Windows-u
+  preuzmiFajl(`izvestaj-${stamp}.csv`, "\uFEFF" + linije.join("\r\n"), "text/csv;charset=utf-8");
+  showToast("Izveštaj sačuvan (CSV).");
 }
 
 function otvoriPdf(putanja) {
