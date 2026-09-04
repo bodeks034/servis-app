@@ -652,6 +652,126 @@ function render() {
       });
     });
   }
+
+  else if (currentView === "uputstvo") {
+    document.getElementById("view-title").textContent = "Uputstvo";
+    document.getElementById("search").classList.add("hidden");
+    btnNew.classList.add("hidden");
+    btnNew.onclick = null;
+    content.innerHTML = uputstvoHtml();
+    return;
+  }
+
+  document.getElementById("search").classList.remove("hidden");
+}
+
+function uputstvoHtml() {
+  return `<div class="guide">
+    <p class="muted" style="margin:0 0 14px;">Kratko uputstvo za svakodnevni rad u Servis Dispečeru — od prijave do računa.</p>
+    <div class="guide-toc">
+      <a href="#g-tok">Redosled rada</a>
+      <a href="#g-klijenti">Klijenti</a>
+      <a href="#g-oprema">Oprema</a>
+      <a href="#g-nalozi">Nalozi</a>
+      <a href="#g-magacin">Magacin</a>
+      <a href="#g-racuni">Računi</a>
+      <a href="#g-kalendar">Kalendar</a>
+      <a href="#g-tim">Tim</a>
+      <a href="#g-telefon">Telefon</a>
+    </div>
+
+    <div class="guide-sec" id="g-tok">
+      <h3>1. Preporučeni redosled</h3>
+      <ol>
+        <li><strong>Tim</strong> — dodaj tehničare (ako radiš u više osoba).</li>
+        <li><strong>Klijenti</strong> — unesi firmu ili fizičko lice.</li>
+        <li><strong>Oprema i vozila</strong> — poveži uređaj / vozilo sa klijentom.</li>
+        <li><strong>Radni nalozi</strong> — otvori posao, dodeli tehničara, prati status.</li>
+        <li><strong>Magacin</strong> — delovi na stanju; utrošak ide sa naloga.</li>
+        <li><strong>Računi</strong> — kad je nalog završen, izdaj račun sa PDV-om.</li>
+      </ol>
+      <div class="tip">Bez klijenta i opreme ne možeš da sačuvaš novi nalog.</div>
+    </div>
+
+    <div class="guide-sec" id="g-klijenti">
+      <h3>2. Klijenti</h3>
+      <p>Meni <strong>Klijenti</strong> → dugme <strong>+ Novo</strong>.</p>
+      <ul>
+        <li>Izaberi tip: <strong>fizičko</strong> ili <strong>pravno lice</strong>.</li>
+        <li>Unesi ime/naziv, telefon, adresu, PIB ili JMBG.</li>
+        <li>Klik na red u tabeli otvara izmenu.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-oprema">
+      <h3>3. Oprema i vozila</h3>
+      <p>Meni <strong>Oprema i vozila</strong> → <strong>+ Novo</strong>.</p>
+      <ul>
+        <li>Izaberi <strong>kategoriju</strong> (vozila, nameštaj, bela tehnika, mašine, poljoprivreda) i <strong>klijenta</strong>.</li>
+        <li>Za vozila: VIN, registracija, kilometraža.</li>
+        <li>Za mašine / poljoprivredu: radni sati, snaga (kW).</li>
+        <li>Unesi datum kupovine i garanciju — kasnije se pojavljuju u podsetnicima.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-nalozi">
+      <h3>4. Radni nalozi</h3>
+      <p>Glavni ekran je <strong>tabla</strong> sa kolonama: Novo → U toku → Čeka delove → Završeno.</p>
+      <ul>
+        <li><strong>+ Novi nalog</strong> — naslov, klijent, oprema, usluga, prioritet, tehničar, termin.</li>
+        <li><strong>Prevuci karticu</strong> u drugu kolonu da promeniš status (na telefonu koristi dugmad u detalju).</li>
+        <li><strong>Klik na karticu</strong> — detalj: status, foto pre/posle, potpis klijenta, delovi, PDF.</li>
+        <li>Filter čipova iznad table filtrira po kategoriji.</li>
+      </ul>
+      <div class="tip">Na telefonu table prevuci ustranu da vidiš sve kolone.</div>
+    </div>
+
+    <div class="guide-sec" id="g-magacin">
+      <h3>5. Magacin delova</h3>
+      <ul>
+        <li><strong>+ Novo</strong> — novi deo (šifra, naziv, min. zaliha, cena).</li>
+        <li><strong>Prijem</strong> — uvećava zalihu kad stigne roba.</li>
+        <li>Na detalju naloga možeš da <strong>utrošiš deo</strong> — skida se sa stanja.</li>
+        <li>Crvena zaliha znači da je ispod minimuma.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-racuni">
+      <h3>6. Računi</h3>
+      <ul>
+        <li>Nalog mora biti u statusu <strong>Završeno</strong>.</li>
+        <li><strong>+ Novo</strong> — izaberi nalog, unesi cenu rada i PDV (podrazumevano 20%).</li>
+        <li>Račun možeš da označiš kao plaćen kad stigne uplata.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-kalendar">
+      <h3>7. Kalendar i podsetnici</h3>
+      <ul>
+        <li><strong>Kalendar</strong> — nalozi raspoređeni po zakazanom terminu; klik otvara detalj.</li>
+        <li><strong>Podsetnici</strong> — predstojeća održavanja i istek garancije.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-tim">
+      <h3>8. Tim i uloge</h3>
+      <ul>
+        <li><strong>Admin / Dispečer</strong> — vidi sve, dodaje članove, klijente, račune.</li>
+        <li><strong>Tehničar</strong> — vidi uglavnom svoje naloge; radi status, foto i potpis.</li>
+        <li>U <strong>Tim</strong> dodaj člana sa emailom i lozinkom da se prijavi na telefonu.</li>
+      </ul>
+    </div>
+
+    <div class="guide-sec" id="g-telefon">
+      <h3>9. Telefon i offline</h3>
+      <ul>
+        <li>Otvori isti sajt na telefonu (možeš da ga „dodaj na početni ekran“).</li>
+        <li>Ako nestane mreža, neke akcije se sačuvaju u redu i pošalju kad se veza vrati (žuti indikator gore).</li>
+        <li>Adresa API servera na prijavi treba da bude produkcijski backend — ne <code>localhost</code>.</li>
+      </ul>
+      <div class="tip">Ako nešto „ne radi“, prvo proveri da li si ulogovan i da li je API adresa tačna na ekranu prijave.</div>
+    </div>
+  </div>`;
 }
 
 function attachDrag() {
