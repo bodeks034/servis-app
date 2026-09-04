@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="sr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Servis Dispečer</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#1B2226">
+<style>
+  :root{
+    --bg:#EDEFEF; --panel:#FFFFFF; --ink:#1B2226; --ink-soft:#5B666E; --ink-faint:#8A939A;
+    --line:#D7DCDD; --line-strong:#B9C0C2; --accent:#D98A1E;
+    --teal:#2B6E73; --danger:#B23A32; --danger-bg:#F7E4E2; --danger-ink:#5C1B16;
+    --warn:#C97F1D; --warn-bg:#FBEBD6; --warn-ink:#5C3A0C;
+    --success:#3E7A45; --success-bg:#E4F0E5; --success-ink:#1B3A1E;
+    --neutral-bg:#E7E9E9; --neutral-ink:#3A4348; --radius:6px;
+    --mono:"SF Mono","Consolas","Menlo",monospace;
+    --sans:-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{font-family:var(--sans); background:var(--bg); color:var(--ink); display:flex; min-height:100vh; font-size:14px;}
+  .hidden{display:none !important;}
+
+  .login-wrap{flex:1; display:flex; align-items:center; justify-content:center; background:var(--ink);}
+  .login-card{background:var(--panel); border-radius:10px; padding:32px; width:380px; max-width:90vw;}
+  .login-card h2{margin:0 0 4px 0; font-size:20px;}
+  .login-card p{color:var(--ink-soft); font-size:13px; margin:0 0 20px 0;}
+  .login-tabs{display:flex; gap:8px; margin-bottom:18px;}
+  .login-tab{flex:1; text-align:center; padding:8px; border-radius:6px; cursor:pointer; font-size:13px; font-weight:600; background:var(--bg); color:var(--ink-soft);}
+  .login-tab.active{background:var(--ink); color:#fff;}
+  .field{margin-bottom:13px;}
+  .field label{display:block; font-size:12px; font-weight:600; color:var(--ink-soft); margin-bottom:5px;}
+  .field input, .field select, .field textarea{width:100%; padding:8px 10px; border:1px solid var(--line-strong); border-radius:5px; font-size:13px; background:var(--bg); font-family:var(--sans);}
+  .field textarea{min-height:72px; resize:vertical;}
+  .field-row{display:grid; grid-template-columns:1fr 1fr; gap:10px;}
+  .error-msg{color:var(--danger); font-size:12.5px; margin-bottom:10px; min-height:1em;}
+  .btn{padding:9px 16px; border-radius:var(--radius); border:1px solid var(--line-strong); background:var(--panel); color:var(--ink); font-size:13px; font-weight:600; cursor:pointer;}
+  .btn:hover{background:var(--bg);}
+  .btn-primary{background:var(--ink); color:#fff; border-color:var(--ink); width:100%;}
+  .btn-primary:hover{background:#333d42;}
+  .btn-danger{background:var(--danger-bg); color:var(--danger-ink); border-color:transparent;}
+  .btn-sm{padding:6px 10px; font-size:12px;}
+
+  .sidebar{width:220px; flex-shrink:0; background:var(--ink); color:#EDEFEF; display:flex; flex-direction:column; padding:20px 0;}
+  .brand{padding:0 20px 20px 20px; border-bottom:1px solid #333d42; margin-bottom:12px;}
+  .brand .mark{font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--accent); text-transform:uppercase;}
+  .brand h1{font-size:17px; font-weight:600; margin:4px 0 0 0; line-height:1.3;}
+  .who{font-size:12px; color:var(--ink-faint); padding:0 20px 14px 20px;}
+  .nav-item{display:flex; align-items:center; gap:10px; padding:11px 20px; color:#C7CDD0; cursor:pointer; border-left:3px solid transparent; font-size:14px;}
+  .nav-item:hover{background:#252d31;}
+  .nav-item.active{background:#252d31; color:#fff; border-left:3px solid var(--accent); font-weight:600;}
+  .sidebar-footer{margin-top:auto; padding:14px 20px 0 20px; border-top:1px solid #333d42;}
+  .sidebar-footer button{width:100%;}
+
+  .main{flex:1; display:flex; flex-direction:column; min-width:0;}
+  .topbar{background:var(--panel); border-bottom:1px solid var(--line); padding:16px 24px; display:flex; align-items:center; gap:16px; flex-wrap:wrap;}
+  .topbar h2{margin:0; font-size:19px; font-weight:600; flex-shrink:0;}
+  .search{flex:1; max-width:320px; padding:8px 12px; border:1px solid var(--line-strong); border-radius:var(--radius); font-size:13px; background:var(--bg);}
+  .btn-primary.inline{width:auto; margin-left:auto;}
+  .content{padding:22px 24px; overflow-y:auto; flex:1;}
+
+  .stats-row{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px;}
+  .stat-card{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px;}
+  .stat-card .label{font-size:12px; color:var(--ink-soft);}
+  .stat-card .value{font-size:26px; font-weight:700; margin-top:4px; font-family:var(--mono);}
+  .stat-card.danger .value{color:var(--danger);}
+  .stat-card.success .value{color:var(--success);}
+
+  .cat-chip{display:inline-flex; align-items:center; gap:6px; padding:5px 12px; border-radius:16px; border:1px solid var(--line-strong); background:var(--panel); font-size:12px; font-weight:600; color:var(--ink-soft); cursor:pointer; margin-right:8px; margin-bottom:16px;}
+  .cat-chip.active{background:var(--ink); color:#fff; border-color:var(--ink);}
+
+  .board{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; align-items:start;}
+  .col-head{display:flex; align-items:center; justify-content:space-between; padding:0 4px 10px 4px; border-bottom:2px solid var(--line-strong); margin-bottom:12px;}
+  .col-head .title{font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft);}
+  .col-head .count{font-family:var(--mono); font-size:12px; color:var(--ink-faint);}
+  .card{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--ink-faint); border-radius:6px; padding:12px 13px; margin-bottom:10px; cursor:pointer;}
+  .card.u_toku{border-left-color:var(--teal);} .card.ceka_delove{border-left-color:var(--warn);} .card.zavrseno{border-left-color:var(--success);}
+  .card.dragging{opacity:.4; cursor:grabbing;}
+  .card-id{font-family:var(--mono); font-size:11px; color:var(--ink-faint);}
+  .card-title{font-weight:600; font-size:13.5px; margin:3px 0 6px 0;}
+  .card-meta{font-size:12px; color:var(--ink-soft); display:flex; justify-content:space-between; align-items:center; gap:8px;}
+  .badge{display:inline-block; font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:10px; text-transform:uppercase;}
+  .badge.kritican{background:var(--danger-bg); color:var(--danger-ink);}
+  .badge.hitno{background:var(--warn-bg); color:var(--warn-ink);}
+  .badge.c1{background:#DDE6EC; color:#1F3A4D;} .badge.c2{background:#EFE3D3; color:#5C4222;}
+  .badge.c3{background:#DCE9E4; color:#1F4A3A;} .badge.c4{background:#E7EAD0; color:#4A5420;}
+  .badge.c5{background:#E8DDE8; color:#4A2A4A;}
+  .col-drop{min-height:40px;} .col-drop.dragover{background:#E2E6E6; border-radius:8px;}
+
+  table{width:100%; border-collapse:collapse; background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  th,td{padding:10px 14px; text-align:left; border-bottom:1px solid var(--line); font-size:13px;}
+  th{background:var(--bg); font-size:11.5px; text-transform:uppercase; color:var(--ink-soft); font-weight:700;}
+  tr:last-child td{border-bottom:none;}
+  td.mono{font-family:var(--mono); font-size:12.5px; color:var(--ink-soft);}
+  tr.clickable{cursor:pointer;}
+  tr.clickable:hover{background:var(--bg);}
+  .low-stock{color:var(--danger); font-weight:700;}
+
+  .overlay{position:fixed; inset:0; background:rgba(20,24,26,.45); display:none; align-items:center; justify-content:center; z-index:50;}
+  .overlay.open{display:flex;}
+  .modal{background:var(--panel); border-radius:10px; width:480px; max-width:92vw; max-height:88vh; overflow-y:auto; padding:22px 24px;}
+  .modal.wide{width:720px;}
+  .modal h3{margin:0 0 16px 0; font-size:17px;}
+  .modal-actions{display:flex; justify-content:flex-end; gap:10px; margin-top:18px; flex-wrap:wrap;}
+  .empty{text-align:center; color:var(--ink-faint); padding:40px 0; font-size:13px;}
+  .badge.queued{background:var(--neutral-bg); color:var(--neutral-ink); font-weight:600;}
+  .toast{position:fixed; bottom:20px; right:20px; background:var(--ink); color:#fff; padding:10px 16px; border-radius:6px; font-size:13px; z-index:100; max-width:80vw;}
+
+  .detail-head{display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:14px;}
+  .detail-head h3{margin:0;}
+  .status-actions{display:flex; flex-wrap:wrap; gap:8px; margin:12px 0 16px;}
+  .muted{color:var(--ink-soft); font-size:13px;}
+  .section-title{font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; color:var(--ink-soft); margin:18px 0 8px;}
+  .history-item{font-size:12.5px; color:var(--ink-soft); padding:4px 0; border-bottom:1px solid var(--line);}
+  .api-hint{font-size:11.5px; color:var(--ink-faint); margin-top:16px;}
+  .detail-meta{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; background:var(--bg); border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:13px;}
+  .detail-meta .k{color:var(--ink-faint); font-size:11px; text-transform:uppercase; font-weight:700;}
+  .detail-meta .v{color:var(--ink); margin-top:2px;}
+  .prilog-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:10px;}
+  .prilog-card{background:var(--bg); border:1px solid var(--line); border-radius:8px; overflow:hidden;}
+  .prilog-card img{width:100%; height:120px; object-fit:cover; display:block; background:#fff; cursor:zoom-in;}
+  .prilog-card .cap{padding:6px 8px; font-size:11px; color:var(--ink-soft); display:flex; justify-content:space-between; align-items:center; gap:6px;}
+  .prilog-actions{display:flex; flex-wrap:wrap; gap:8px; margin:10px 0;}
+  .signature-box{border:1px dashed var(--line-strong); border-radius:8px; background:#fff; touch-action:none;}
+  .signature-box canvas{width:100%; height:160px; display:block; cursor:crosshair;}
+  .lightbox{position:fixed; inset:0; background:rgba(10,12,14,.85); display:none; align-items:center; justify-content:center; z-index:80; padding:20px;}
+  .lightbox.open{display:flex;}
+  .lightbox img{max-width:96vw; max-height:90vh; border-radius:6px; background:#fff;}
+  .podsetnik{background:var(--panel); border:1px solid var(--line); border-left:4px solid var(--warn); border-radius:6px; padding:12px 14px; margin-bottom:10px;}
+  .podsetnik.visok{border-left-color:var(--danger);}
+  .podsetnik .t{font-weight:600; font-size:13.5px;}
+  .podsetnik .s{font-size:12px; color:var(--ink-soft); margin-top:4px;}
+  .cal-day{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:12px; margin-bottom:12px;}
+  .cal-day h4{margin:0 0 8px; font-size:13px; color:var(--ink-soft);}
+  .cal-item{padding:8px 0; border-top:1px solid var(--line); cursor:pointer; font-size:13px;}
+  .cal-item:first-of-type{border-top:none;}
+  .extra-fields{display:none; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:13px; padding:12px; background:var(--bg); border-radius:8px;}
+  .extra-fields.show{display:grid;}
+
+  @media (max-width: 860px) {
+    .detail-meta{grid-template-columns:1fr;}
+    .extra-fields.show{grid-template-columns:1fr;}
+  }
+    body{flex-direction:column;}
+    .sidebar{width:100%; flex-direction:row; flex-wrap:wrap; padding:10px 8px 0; align-items:center;}
+    .brand{border-bottom:none; margin-bottom:0; padding:4px 12px 8px; flex:1;}
+    .brand h1{font-size:15px;}
+    .who{display:none;}
+    .nav-item{padding:8px 10px; border-left:none; border-bottom:3px solid transparent; font-size:12px;}
+    .nav-item.active{border-left:none; border-bottom-color:var(--accent);}
+    .sidebar-footer{margin-top:0; border-top:none; padding:8px; width:100%;}
+    .topbar{padding:12px;}
+    .topbar h2{width:100%;}
+    .search{max-width:none;}
+    .btn-primary.inline{margin-left:0;}
+    .content{padding:14px 12px;}
+    .stats-row{grid-template-columns:1fr 1fr;}
+    .board{display:flex; overflow-x:auto; gap:12px; padding-bottom:12px; scroll-snap-type:x mandatory;}
+    .board > div{min-width:260px; flex:0 0 260px; scroll-snap-align:start;}
+    .field-row{grid-template-columns:1fr;}
+    .modal{width:100%; max-width:100vw; max-height:96vh; border-radius:10px 10px 0 0;}
+    .overlay{align-items:flex-end;}
+    table{display:block; overflow-x:auto;}
+  }
+</style>
+</head>
+<body>
+
+<div class="login-wrap" id="login-screen">
+  <div class="login-card">
+    <h2>Servis Dispečer</h2>
+    <p>Cloud verzija — poveži se sa svojim nalogom</p>
+    <div class="login-tabs">
+      <div class="login-tab active" data-tab="login">Prijava</div>
+      <div class="login-tab" data-tab="registracija">Nova firma</div>
+    </div>
+
+    <div id="tab-login">
+      <div class="field"><label>Email</label><input id="li-email" type="email" placeholder="ime@firma.com"></div>
+      <div class="field"><label>Lozinka</label><input id="li-lozinka" type="password"></div>
+      <div class="error-msg" id="li-error"></div>
+      <button class="btn btn-primary" id="btn-login">Prijavi se</button>
+    </div>
+
+    <div id="tab-registracija" class="hidden">
+      <div class="field"><label>Naziv firme</label><input id="reg-firma" placeholder="npr. Servis Bogdanović"></div>
+      <div class="field-row">
+        <div class="field"><label>Ime</label><input id="reg-ime"></div>
+        <div class="field"><label>Prezime</label><input id="reg-prezime"></div>
+      </div>
+      <div class="field"><label>Email</label><input id="reg-email" type="email"></div>
+      <div class="field"><label>Lozinka</label><input id="reg-lozinka" type="password"></div>
+      <div class="error-msg" id="reg-error"></div>
+      <button class="btn btn-primary" id="btn-registracija">Registruj firmu</button>
+    </div>
+
+    <div class="api-hint">
+      <div class="field" style="margin-bottom:0;">
+        <label>Adresa API servera</label>
+        <input id="api-url-input" placeholder="http://localhost:4000/api">
+      </div>
+      Posle deploy-a na Vercel ovde unesi URL backenda (Railway/Render).
+    </div>
+  </div>
+</div>
+
+<div class="hidden" id="app-shell" style="display:contents;">
+  <div class="sidebar">
+    <div class="brand"><div class="mark">terenski servis</div><h1>Servis&nbsp;Dispečer</h1></div>
+    <div class="who" id="who-info"></div>
+    <div class="nav-item active" data-view="nalozi"><span>Radni nalozi</span></div>
+    <div class="nav-item" data-view="kalendar"><span>Kalendar</span></div>
+    <div class="nav-item" data-view="podsetnici"><span>Podsetnici</span></div>
+    <div class="nav-item" data-view="oprema"><span>Oprema i vozila</span></div>
+    <div class="nav-item" data-view="klijenti"><span>Klijenti</span></div>
+    <div class="nav-item" data-view="magacin"><span>Magacin delova</span></div>
+    <div class="nav-item" data-view="racuni"><span>Računi</span></div>
+    <div class="nav-item" data-view="izvestaji"><span>Izveštaji</span></div>
+    <div class="nav-item" data-view="tim" id="nav-tim"><span>Tim</span></div>
+    <div class="sidebar-footer"><button class="btn" id="btn-logout">Odjavi se</button></div>
+  </div>
+
+  <div class="main">
+    <div class="topbar">
+      <h2 id="view-title">Radni nalozi</h2>
+      <input class="search" id="search" placeholder="Pretraga...">
+      <span class="hidden" id="queue-indicator" style="font-size:12px; color:var(--warn-ink); background:var(--warn-bg); padding:5px 10px; border-radius:12px; font-weight:600;"></span>
+      <button class="btn btn-primary inline" id="btn-new">+ Novo</button>
+    </div>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+
+<!-- Modal: novi / izmena radnog naloga -->
+<div class="overlay" id="overlay-nalog">
+  <div class="modal">
+    <h3>Novi radni nalog</h3>
+    <div class="field"><label>Naziv problema / posla</label><input id="f-naslov"></div>
+    <div class="field-row">
+      <div class="field"><label>Kategorija</label><select id="f-kategorija"></select></div>
+      <div class="field"><label>Vrsta usluge</label><select id="f-tip-usluge"></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Klijent</label><select id="f-klijent"></select></div>
+      <div class="field"><label>Oprema / uređaj</label><select id="f-oprema"></select></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Prioritet</label>
+        <select id="f-prioritet"><option value="normalan">Normalan</option><option value="hitno">Hitno</option><option value="kritican">Kritičan</option></select>
+      </div>
+      <div class="field"><label>Lokacija</label>
+        <select id="f-lokacija"><option value="radionica">Radionica</option><option value="teren">Teren</option></select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Tehničar</label><select id="f-tehnicar"></select></div>
+      <div class="field"><label>Zakazano za</label><input id="f-zakazano" type="datetime-local"></div>
+    </div>
+    <div class="field"><label>Adresa intervencije</label><input id="f-adresa" placeholder="Ako je posao na terenu"></div>
+    <div class="field"><label>Opis / napomena</label><textarea id="f-opis"></textarea></div>
+    <div class="error-msg" id="nalog-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-nalog">Otkaži</button><button class="btn btn-primary" id="save-nalog" style="width:auto;">Sačuvaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: detalj naloga -->
+<div class="overlay" id="overlay-nalog-detalj">
+  <div class="modal wide" id="nalog-detalj-body"></div>
+</div>
+
+<!-- Modal: nova / izmena opreme -->
+<div class="overlay" id="overlay-oprema">
+  <div class="modal">
+    <h3 id="oprema-modal-title">Nova oprema / uređaj</h3>
+    <input type="hidden" id="fo-id">
+    <div class="field"><label>Kategorija</label><select id="fo-kategorija"></select></div>
+    <div class="field"><label>Klijent</label><select id="fo-klijent"></select></div>
+    <div class="field"><label>Naziv</label><input id="fo-naziv" placeholder="npr. Frižider Gorenje NRK6202"></div>
+    <div class="field-row">
+      <div class="field"><label>Proizvođač</label><input id="fo-proizvodjac"></div>
+      <div class="field"><label>Model</label><input id="fo-model"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Serijski broj</label><input id="fo-serijski"></div>
+      <div class="field"><label>Lokacija</label><input id="fo-lokacija"></div>
+    </div>
+    <div class="extra-fields" id="fo-extra">
+      <div class="field" data-extra="vozilo"><label>VIN</label><input id="fo-vin"></div>
+      <div class="field" data-extra="vozilo"><label>Registracija</label><input id="fo-registracija"></div>
+      <div class="field" data-extra="vozilo"><label>Kilometraža</label><input id="fo-km" type="number"></div>
+      <div class="field" data-extra="masina"><label>Radni sati</label><input id="fo-satnice" type="number" step="0.1"></div>
+      <div class="field" data-extra="masina"><label>Snaga (kW)</label><input id="fo-snaga" type="number" step="0.01"></div>
+      <div class="field" data-extra="opste"><label>Boja</label><input id="fo-boja"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Datum kupovine</label><input id="fo-kupovina" type="date"></div>
+      <div class="field"><label>Garancija do</label><input id="fo-garancija" type="date"></div>
+    </div>
+    <div class="error-msg" id="oprema-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-oprema">Otkaži</button><button class="btn btn-primary" id="save-oprema" style="width:auto;">Sačuvaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: novi / izmena klijenta -->
+<div class="overlay" id="overlay-klijent">
+  <div class="modal">
+    <h3 id="klijent-modal-title">Novi klijent</h3>
+    <input type="hidden" id="fk-id">
+    <div class="field"><label>Tip</label><select id="fk-tip"><option value="fizicko_lice">Fizičko lice</option><option value="pravno_lice">Pravno lice</option></select></div>
+    <div class="field"><label>Naziv / ime i prezime</label><input id="fk-naziv"></div>
+    <div class="field-row">
+      <div class="field"><label>Telefon</label><input id="fk-telefon"></div>
+      <div class="field"><label>Email</label><input id="fk-email"></div>
+    </div>
+    <div class="field"><label>Adresa</label><input id="fk-adresa"></div>
+    <div class="field"><label>PIB / JMBG</label><input id="fk-pib"></div>
+    <div class="error-msg" id="klijent-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-klijent">Otkaži</button><button class="btn btn-primary" id="save-klijent" style="width:auto;">Sačuvaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: novi deo -->
+<div class="overlay" id="overlay-deo">
+  <div class="modal">
+    <h3>Novi deo (magacin)</h3>
+    <div class="field-row">
+      <div class="field"><label>Šifra</label><input id="fd-sifra"></div>
+      <div class="field"><label>Jedinica mere</label><input id="fd-jedinica" placeholder="kom, m, l..."></div>
+    </div>
+    <div class="field"><label>Naziv dela</label><input id="fd-naziv"></div>
+    <div class="field-row">
+      <div class="field"><label>Min. zaliha</label><input id="fd-min" type="number" value="0"></div>
+      <div class="field"><label>Prodajna cena</label><input id="fd-cena" type="number" step="0.01"></div>
+    </div>
+    <div class="error-msg" id="deo-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-deo">Otkaži</button><button class="btn btn-primary" id="save-deo" style="width:auto;">Sačuvaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: prijem robe -->
+<div class="overlay" id="overlay-prijem">
+  <div class="modal">
+    <h3>Prijem u magacin</h3>
+    <input type="hidden" id="fp-id">
+    <p class="muted" id="fp-naziv"></p>
+    <div class="field"><label>Količina</label><input id="fp-kolicina" type="number" min="1" value="1"></div>
+    <div class="error-msg" id="prijem-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-prijem">Otkaži</button><button class="btn btn-primary" id="save-prijem" style="width:auto;">Potvrdi prijem</button></div>
+  </div>
+</div>
+
+<!-- Modal: izdaj račun -->
+<div class="overlay" id="overlay-racun">
+  <div class="modal">
+    <h3>Izdaj račun</h3>
+    <div class="field"><label>Završen nalog</label><select id="fr-nalog"></select></div>
+    <div class="field-row">
+      <div class="field"><label>Cena rada (bez PDV)</label><input id="fr-cena-rada" type="number" step="0.01" value="0"></div>
+      <div class="field"><label>PDV stopa (%)</label><input id="fr-pdv" type="number" step="0.01" value="20"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Rok plaćanja (dana)</label><input id="fr-rok" type="number" value="15"></div>
+      <div class="field"><label>Napomena</label><input id="fr-napomena"></div>
+    </div>
+    <div class="error-msg" id="racun-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-racun">Otkaži</button><button class="btn btn-primary" id="save-racun" style="width:auto;">Izdaj račun</button></div>
+  </div>
+</div>
+
+<!-- Modal: novi član tima -->
+<div class="overlay" id="overlay-korisnik">
+  <div class="modal">
+    <h3>Novi član tima</h3>
+    <div class="field-row">
+      <div class="field"><label>Ime</label><input id="fu-ime"></div>
+      <div class="field"><label>Prezime</label><input id="fu-prezime"></div>
+    </div>
+    <div class="field"><label>Email</label><input id="fu-email" type="email"></div>
+    <div class="field-row">
+      <div class="field"><label>Telefon</label><input id="fu-telefon"></div>
+      <div class="field"><label>Uloga</label>
+        <select id="fu-uloga">
+          <option value="tehnicar">Tehničar</option>
+          <option value="dispecer">Dispečer</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Lozinka</label><input id="fu-lozinka" type="password"></div>
+    <div class="error-msg" id="korisnik-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-korisnik">Otkaži</button><button class="btn btn-primary" id="save-korisnik" style="width:auto;">Dodaj</button></div>
+  </div>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightbox-img" alt="Pregled"></div>
+
+<script src="./config.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>

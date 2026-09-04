@@ -1,0 +1,358 @@
+// Prisma schema — servisna aplikacija (start: PostgreSQL/Supabase)
+// Kasniji prelazak na MySQL ili SQL Server: promeni "provider" ispod
+// i DB_PROVIDER u .env. Oracle zahteva drugi ORM (Prisma ga nema).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------- Firme i korisnici ----------
+
+model Firma {
+  id          String   @id @default(uuid())
+  naziv       String
+  pib         String?
+  maticniBroj String?  @map("maticni_broj")
+  adresa      String?
+  logoUrl     String?  @map("logo_url")
+  plan        String   @default("standard")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  korisnici   Korisnik[]
+  klijenti    Klijent[]
+  oprema      Oprema[]
+  radniNalozi RadniNalog[]
+  delovi      Deo[]
+  magacini    Magacin[]
+  racuni      Racun[]
+
+  @@map("firme")
+}
+
+enum Uloga {
+  admin
+  dispecer
+  tehnicar
+  klijent
+}
+
+model Korisnik {
+  id           String   @id @default(uuid())
+  firmaId      String   @map("firma_id")
+  firma        Firma    @relation(fields: [firmaId], references: [id])
+  ime          String
+  prezime      String
+  email        String   @unique
+  telefon      String?
+  passwordHash String   @map("password_hash")
+  uloga        Uloga
+  aktivan      Boolean  @default(true)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  dodeljeniNalozi RadniNalog[] @relation("DodeljeniTehnicar")
+  kreiraniNalozi  RadniNalog[] @relation("KreiraoNalog")
+
+  @@index([firmaId])
+  @@map("korisnici")
+}
+
+// ---------- Klijenti i oprema ----------
+
+enum TipKlijenta {
+  fizicko_lice
+  pravno_lice
+}
+
+model Klijent {
+  id          String      @id @default(uuid())
+  firmaId     String      @map("firma_id")
+  firma       Firma       @relation(fields: [firmaId], references: [id])
+  tip         TipKlijenta
+  nazivIliIme String      @map("naziv_ili_ime")
+  pibIliJmbg  String?     @map("pib_ili_jmbg")
+  telefon     String?
+  email       String?
+  adresa      String?
+  napomena    String?
+  createdAt   DateTime    @default(now()) @map("created_at")
+
+  oprema      Oprema[]
+  radniNalozi RadniNalog[]
+  racuni      Racun[]
+
+  @@index([firmaId])
+  @@map("klijenti")
+}
+
+model Kategorija {
+  id      String @id @default(uuid())
+  naziv   String
+  ikonica String?
+
+  oprema      Oprema[]
+  radniNalozi RadniNalog[]
+
+  @@map("kategorije")
+}
+
+model TipUsluge {
+  id    String @id @default(uuid())
+  naziv String
+
+  radniNalozi RadniNalog[]
+
+  @@map("tipovi_usluga")
+}
+
+enum StatusOpreme {
+  ispravno
+  zakazan_servis
+  van_pogona
+}
+
+model Oprema {
+  id            String        @id @default(uuid())
+  firmaId       String        @map("firma_id")
+  firma         Firma         @relation(fields: [firmaId], references: [id])
+  klijentId     String?       @map("klijent_id")
+  klijent       Klijent?      @relation(fields: [klijentId], references: [id])
+  kategorijaId  String        @map("kategorija_id")
+  kategorija    Kategorija    @relation(fields: [kategorijaId], references: [id])
+  naziv         String
+  proizvodjac   String?
+  model         String?
+  serijskiBroj  String?       @map("serijski_broj")
+  // Polja po tipu opreme (vozilo / mašina / nameštaj…)
+  vin           String?
+  registracija  String?
+  kilometraza   Int?
+  satnice       Decimal?      @db.Decimal(12, 1)
+  boja          String?
+  snagaKw       Decimal?      @map("snaga_kw") @db.Decimal(10, 2)
+  datumKupovine DateTime?     @map("datum_kupovine")
+  garancijaDo   DateTime?     @map("garancija_do")
+  lokacija      String?
+  status        StatusOpreme  @default(ispravno)
+  napomena      String?
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  radniNalozi RadniNalog[]
+
+  @@index([firmaId])
+  @@map("oprema")
+}
+
+// ---------- Radni nalozi ----------
+
+enum Prioritet {
+  normalan
+  hitno
+  kritican
+}
+
+enum StatusNaloga {
+  novo
+  u_toku
+  ceka_delove
+  zavrseno
+  otkazano
+}
+
+enum LokacijaTip {
+  radionica
+  teren
+}
+
+model RadniNalog {
+  id                  String       @id @default(uuid())
+  brojNaloga          String       @map("broj_naloga")
+  firmaId             String       @map("firma_id")
+  firma               Firma        @relation(fields: [firmaId], references: [id])
+  klijentId           String       @map("klijent_id")
+  klijent             Klijent      @relation(fields: [klijentId], references: [id])
+  opremaId            String       @map("oprema_id")
+  oprema              Oprema       @relation(fields: [opremaId], references: [id])
+  kategorijaId        String       @map("kategorija_id")
+  kategorija          Kategorija   @relation(fields: [kategorijaId], references: [id])
+  tipUslugeId         String       @map("tip_usluge_id")
+  tipUsluge           TipUsluge    @relation(fields: [tipUslugeId], references: [id])
+  naslov              String
+  opis                String?
+  prioritet           Prioritet    @default(normalan)
+  status              StatusNaloga @default(novo)
+  lokacijaTip         LokacijaTip  @map("lokacija_tip")
+  adresaIntervencije  String?      @map("adresa_intervencije")
+  dodeljeniTehnicarId String?      @map("dodeljeni_tehnicar_id")
+  dodeljeniTehnicar   Korisnik?    @relation("DodeljeniTehnicar", fields: [dodeljeniTehnicarId], references: [id])
+  kreiraoId           String       @map("kreirao_id")
+  kreirao             Korisnik     @relation("KreiraoNalog", fields: [kreiraoId], references: [id])
+  zakazanoZa          DateTime?    @map("zakazano_za")
+  slaRok              DateTime?    @map("sla_rok")
+  zavrsenoAt          DateTime?    @map("zavrseno_at")
+  createdAt           DateTime     @default(now()) @map("created_at")
+  updatedAt           DateTime     @updatedAt @map("updated_at")
+
+  istorijaStatusa NalogIstorijaStatusa[]
+  prilozi         NalogPrilog[]
+  utroseniDelovi  NalogUtroseniDeo[]
+  racun           Racun?
+
+  @@unique([firmaId, brojNaloga])
+  @@index([firmaId])
+  @@map("radni_nalozi")
+}
+
+model NalogIstorijaStatusa {
+  id           String        @id @default(uuid())
+  nalogId      String        @map("nalog_id")
+  nalog        RadniNalog    @relation(fields: [nalogId], references: [id])
+  stariStatus  StatusNaloga? @map("stari_status")
+  noviStatus   StatusNaloga  @map("novi_status")
+  promenioId   String        @map("promenio_id")
+  promenjenoAt DateTime      @default(now()) @map("promenjeno_at")
+
+  @@map("nalog_istorija_statusa")
+}
+
+enum TipPriloga {
+  foto_pre
+  foto_posle
+  video
+  potpis_klijenta
+  pdf_izvestaj
+}
+
+model NalogPrilog {
+  id         String     @id @default(uuid())
+  nalogId    String     @map("nalog_id")
+  nalog      RadniNalog @relation(fields: [nalogId], references: [id])
+  tip        TipPriloga
+  fajlUrl    String     @map("fajl_url")
+  uploadedBy String     @map("uploaded_by")
+  uploadedAt DateTime   @default(now()) @map("uploaded_at")
+
+  @@map("nalog_prilozi")
+}
+
+// ---------- Magacin i delovi ----------
+
+model Deo {
+  id           String   @id @default(uuid())
+  firmaId      String   @map("firma_id")
+  firma        Firma    @relation(fields: [firmaId], references: [id])
+  sifra        String
+  naziv        String
+  jedinicaMere String?  @map("jedinica_mere")
+  nabavnaCena  Decimal? @map("nabavna_cena")
+  prodajnaCena Decimal? @map("prodajna_cena")
+  minZaliha    Int      @default(0) @map("min_zaliha")
+
+  stanjeZaliha StanjeZaliha[]
+  utroseniU    NalogUtroseniDeo[]
+
+  @@unique([firmaId, sifra])
+  @@index([firmaId])
+  @@map("delovi")
+}
+
+enum TipMagacina {
+  centralni
+  mobilni
+}
+
+model Magacin {
+  id         String      @id @default(uuid())
+  firmaId    String      @map("firma_id")
+  firma      Firma       @relation(fields: [firmaId], references: [id])
+  naziv      String
+  tip        TipMagacina @default(centralni)
+  tehnicarId String?     @map("tehnicar_id")
+
+  stanjeZaliha StanjeZaliha[]
+
+  @@index([firmaId])
+  @@map("magacini")
+}
+
+model StanjeZaliha {
+  id        String  @id @default(uuid())
+  deoId     String  @map("deo_id")
+  deo       Deo     @relation(fields: [deoId], references: [id])
+  magacinId String  @map("magacin_id")
+  magacin   Magacin @relation(fields: [magacinId], references: [id])
+  kolicina  Int     @default(0)
+
+  @@unique([deoId, magacinId])
+  @@map("stanje_zaliha")
+}
+
+model NalogUtroseniDeo {
+  id           String     @id @default(uuid())
+  nalogId      String     @map("nalog_id")
+  nalog        RadniNalog @relation(fields: [nalogId], references: [id])
+  deoId        String     @map("deo_id")
+  deo          Deo        @relation(fields: [deoId], references: [id])
+  kolicina     Int
+  cenaPoKomadu Decimal    @map("cena_po_komadu")
+
+  @@map("nalog_utroseni_delovi")
+}
+
+// ---------- Finansije ----------
+
+enum StatusRacuna {
+  neplacen
+  delimicno_placen
+  placen
+}
+
+model Racun {
+  id           String       @id @default(uuid())
+  nalogId      String       @unique @map("nalog_id")
+  nalog        RadniNalog   @relation(fields: [nalogId], references: [id])
+  firmaId      String       @map("firma_id")
+  firma        Firma        @relation(fields: [firmaId], references: [id])
+  klijentId    String       @map("klijent_id")
+  klijent      Klijent      @relation(fields: [klijentId], references: [id])
+  brojRacuna   String       @map("broj_racuna")
+  status       StatusRacuna @default(neplacen)
+  pdvStopa     Decimal      @default(20) @map("pdv_stopa") @db.Decimal(5, 2)
+  iznosBezPdv  Decimal      @map("iznos_bez_pdv") @db.Decimal(12, 2)
+  iznosPdv     Decimal      @map("iznos_pdv") @db.Decimal(12, 2)
+  ukupanIznos  Decimal      @map("ukupan_iznos") @db.Decimal(12, 2)
+  napomena     String?
+  izdatAt      DateTime     @default(now()) @map("izdat_at")
+  rokPlacanja  DateTime?    @map("rok_placanja")
+  placenAt     DateTime?    @map("placen_at")
+
+  stavke RacunStavka[]
+
+  @@unique([firmaId, brojRacuna])
+  @@index([firmaId])
+  @@map("racuni")
+}
+
+enum TipStavkeRacuna {
+  rad
+  deo
+  ostalo
+}
+
+model RacunStavka {
+  id          String          @id @default(uuid())
+  racunId     String          @map("racun_id")
+  racun       Racun           @relation(fields: [racunId], references: [id], onDelete: Cascade)
+  tip         TipStavkeRacuna @default(ostalo)
+  opis        String
+  kolicina    Decimal         @db.Decimal(12, 2)
+  cena        Decimal         @db.Decimal(12, 2)
+  redosled    Int             @default(0)
+
+  @@map("racun_stavke")
+}
