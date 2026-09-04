@@ -1,1 +1,1 @@
-window.SERVIS_API_BASE = "http://localhost:4000/api";
+window.SERVIS_API_BASE = "https://backend-nine-pied-44.vercel.app/api";
