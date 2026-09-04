@@ -27,6 +27,7 @@ app.use(
 app.use(express.json({ limit: "4mb" })); // foto/potpis kao data URL
 
 app.get("/api/health", (req, res) => res.json({ status: "ok" }));
+app.get("/health", (req, res) => res.json({ status: "ok" }));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/nalozi", naloziRoutes);
@@ -37,6 +38,17 @@ app.use("/api/sifarnici", sifarniciRoutes);
 app.use("/api/racuni", racuniRoutes);
 app.use("/api/korisnici", korisniciRoutes);
 app.use("/api/podsetnici", podsetniciRoutes);
+
+// Na Vercel-u putanje ponekad dođu bez /api prefiksa — dupliciraj rute
+app.use("/auth", authRoutes);
+app.use("/nalozi", naloziRoutes);
+app.use("/oprema", opremaRoutes);
+app.use("/klijenti", klijentiRoutes);
+app.use("/delovi", delovoRoutes);
+app.use("/sifarnici", sifarniciRoutes);
+app.use("/racuni", racuniRoutes);
+app.use("/korisnici", korisniciRoutes);
+app.use("/podsetnici", podsetniciRoutes);
 
 app.use((err, req, res, next) => {
   if (err && err.code === "P2002") {
@@ -49,7 +61,12 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Lokalno: klasičan Node server. Na Vercel-u: serverless export.
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`Servis-app backend radi na portu ${PORT}`);
-});
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`Servis-app backend radi na portu ${PORT}`);
+  });
+}
+
+module.exports = app;

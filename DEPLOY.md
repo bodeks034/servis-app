@@ -1,34 +1,26 @@
-# Deploy
+# Deploy (besplatno)
 
-## Frontend → Vercel
+## Frontend — već na Vercel
+https://servis-dispecer.vercel.app/
 
-1. Push repo na GitHub (ili import folder).
-2. Vercel → New Project → Root Directory = `frontend`
-3. Build: nije potreban (static). Output: `.`
-4. U `frontend/config.js` stavi URL backenda:
-   ```js
-   window.SERVIS_API_BASE = "https://tvoj-api.up.railway.app/api";
-   ```
-5. Deploy.
+## Backend — drugi Vercel projekat (umesto Railway)
 
-## Backend → Railway (preporuka)
+1. [vercel.com/new](https://vercel.com/new) → Import **bodeks034/servis-app**
+2. **Root Directory** = `backend`
+3. Framework: Other
+4. Environment Variables (isti kao lokalni `backend/.env`):
 
-1. New Project → Deploy from GitHub → root `backend`
-2. Env variables:
-   - `DATABASE_URL`, `DIRECT_URL` (Supabase Session pooler)
-   - `JWT_SECRET`
-   - `DB_PROVIDER=postgresql`
-   - `FRONTEND_ORIGIN=https://tvoja-app.vercel.app`
-   - opciono: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`
-   - opciono SMTP: `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`
-3. Start: `npx prisma migrate deploy && node src/server.js`
-   (već u `railway.toml` / `Dockerfile`)
+| Key | Napomena |
+|---|---|
+| `DATABASE_URL` | Session pooler OK; bolje Transaction `:6543?pgbouncer=true` |
+| `DIRECT_URL` | Session / direct (za Prisma) |
+| `JWT_SECRET` | iz `.env` |
+| `DB_PROVIDER` | `postgresql` |
+| `FRONTEND_ORIGIN` | `https://servis-dispecer.vercel.app` |
 
-## Backend → Render
+5. Deploy → dobiješ npr. `https://servis-app-api-xxx.vercel.app`
+6. Provera: `https://…vercel.app/api/health`
+7. U frontendu (login polje ili `frontend/config.js`):
+   `https://…vercel.app/api`
 
-Koristi `render.yaml` u root-u ili ručno Web Service sa root `backend`.
-
-## Provera
-
-- `https://tvoj-api.../api/health` → `{"status":"ok"}`
-- Frontend login sa API adresom backenda
+Migracije se i dalje rade **lokalno** (`npx prisma migrate deploy`), ne na Vercel-u.
