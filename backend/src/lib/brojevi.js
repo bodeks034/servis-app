@@ -20,4 +20,8 @@ function sledeciBrojRacuna(tx, firmaId) {
   return sledeciBroj(tx, "racun", firmaId, "brojRacuna", "R");
 }
 
-module.exports = { sledeciBrojNaloga, sledeciBrojRacuna };
+function sledeciBrojPonude(tx, firmaId) {
+  return sledeciBroj(tx, "ponuda", firmaId, "brojPonude", "P");
+}
+
+module.exports = { sledeciBrojNaloga, sledeciBrojRacuna, sledeciBrojPonude };

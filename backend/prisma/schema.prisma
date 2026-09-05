@@ -32,6 +32,10 @@ model Firma {
   delovi      Deo[]
   magacini    Magacin[]
   racuni      Racun[]
+  ponude      Ponuda[]
+  ugovori     Ugovor[]
+  preventivniPlanovi PreventivniPlan[]
+  notifikacije NotifikacijaLog[]
 
   @@map("firme")
 }
@@ -54,6 +58,11 @@ model Korisnik {
   passwordHash String   @map("password_hash")
   uloga        Uloga
   aktivan      Boolean  @default(true)
+  // Veštine za skill matching, npr. ["vozila","elektronika","klima"]
+  vestine      Json     @default("[]")
+  // Portal: korisnik uloge "klijent" vezan za zapis Klijent
+  klijentId    String?  @map("klijent_id")
+  klijentPortal Klijent? @relation("PortalKorisnik", fields: [klijentId], references: [id])
   createdAt    DateTime @default(now()) @map("created_at")
 
   dodeljeniNalozi RadniNalog[] @relation("DodeljeniTehnicar")
@@ -61,6 +70,7 @@ model Korisnik {
   mobilniMagacini Magacin[]    @relation("TehnicarMagacin")
 
   @@index([firmaId])
+  @@index([klijentId])
   @@map("korisnici")
 }
 
@@ -87,6 +97,9 @@ model Klijent {
   oprema      Oprema[]
   radniNalozi RadniNalog[]
   racuni      Racun[]
+  ponude      Ponuda[]
+  ugovori     Ugovor[]
+  portalKorisnici Korisnik[] @relation("PortalKorisnik")
 
   @@index([firmaId])
   @@map("klijenti")
@@ -144,7 +157,8 @@ model Oprema {
   napomena      String?
   createdAt     DateTime      @default(now()) @map("created_at")
 
-  radniNalozi RadniNalog[]
+  radniNalozi        RadniNalog[]
+  preventivniPlanovi PreventivniPlan[]
 
   @@index([firmaId])
   @@map("oprema")
@@ -206,6 +220,7 @@ model RadniNalog {
   utroseniDelovi  NalogUtroseniDeo[]
   checklist       NalogChecklistStavka[]
   racun           Racun?
+  ponude          Ponuda[]
 
   @@unique([firmaId, brojNaloga])
   @@index([firmaId])
@@ -334,8 +349,10 @@ enum StatusRacuna {
 
 model Racun {
   id           String       @id @default(uuid())
-  nalogId      String       @unique @map("nalog_id")
-  nalog        RadniNalog   @relation(fields: [nalogId], references: [id])
+  nalogId      String?      @unique @map("nalog_id")
+  nalog        RadniNalog?  @relation(fields: [nalogId], references: [id])
+  ponudaId     String?      @unique @map("ponuda_id")
+  ponuda       Ponuda?      @relation(fields: [ponudaId], references: [id])
   firmaId      String       @map("firma_id")
   firma        Firma        @relation(fields: [firmaId], references: [id])
   klijentId    String       @map("klijent_id")
@@ -375,4 +392,132 @@ model RacunStavka {
   redosled    Int             @default(0)
 
   @@map("racun_stavke")
+}
+
+// ---------- Faza B: ponude, ugovori, preventiva, notifikacije ----------
+
+enum StatusPonude {
+  nacrt
+  poslata
+  odobrena
+  odbijena
+  istekla
+}
+
+model Ponuda {
+  id          String       @id @default(uuid())
+  firmaId     String       @map("firma_id")
+  firma       Firma        @relation(fields: [firmaId], references: [id])
+  klijentId   String       @map("klijent_id")
+  klijent     Klijent      @relation(fields: [klijentId], references: [id])
+  nalogId     String?      @map("nalog_id")
+  nalog       RadniNalog?  @relation(fields: [nalogId], references: [id])
+  brojPonude  String       @map("broj_ponude")
+  status      StatusPonude @default(nacrt)
+  naslov      String
+  napomena    String?
+  pdvStopa    Decimal      @default(20) @map("pdv_stopa") @db.Decimal(5, 2)
+  iznosBezPdv Decimal      @map("iznos_bez_pdv") @db.Decimal(12, 2)
+  iznosPdv    Decimal      @map("iznos_pdv") @db.Decimal(12, 2)
+  ukupanIznos Decimal      @map("ukupan_iznos") @db.Decimal(12, 2)
+  vaziDo      DateTime?    @map("vazi_do")
+  odobrenoAt  DateTime?    @map("odobreno_at")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+
+  stavke PonudaStavka[]
+  racun  Racun?
+
+  @@unique([firmaId, brojPonude])
+  @@index([firmaId])
+  @@map("ponude")
+}
+
+model PonudaStavka {
+  id       String @id @default(uuid())
+  ponudaId String @map("ponuda_id")
+  ponuda   Ponuda @relation(fields: [ponudaId], references: [id], onDelete: Cascade)
+  opis     String
+  kolicina Decimal @db.Decimal(12, 2)
+  cena     Decimal @db.Decimal(12, 2)
+  redosled Int     @default(0)
+
+  @@map("ponuda_stavke")
+}
+
+enum TipUgovora {
+  pausal
+  po_pozivu
+  sla
+}
+
+model Ugovor {
+  id               String     @id @default(uuid())
+  firmaId          String     @map("firma_id")
+  firma            Firma      @relation(fields: [firmaId], references: [id])
+  klijentId        String     @map("klijent_id")
+  klijent          Klijent    @relation(fields: [klijentId], references: [id])
+  naziv            String
+  tip              TipUgovora @default(po_pozivu)
+  slaReakcijaSati  Int?       @map("sla_reakcija_sati")
+  slaResavanjeSati Int?       @map("sla_resavanje_sati")
+  mesecnaCena      Decimal?   @map("mesecna_cena") @db.Decimal(12, 2)
+  pocetak          DateTime
+  kraj             DateTime?
+  aktivan          Boolean    @default(true)
+  napomena         String?
+  createdAt        DateTime   @default(now()) @map("created_at")
+
+  @@index([firmaId])
+  @@map("ugovori")
+}
+
+enum TipOkidacaPreventive {
+  vreme
+  kilometri
+  sati
+}
+
+model PreventivniPlan {
+  id               String               @id @default(uuid())
+  firmaId          String               @map("firma_id")
+  firma            Firma                @relation(fields: [firmaId], references: [id])
+  opremaId         String               @map("oprema_id")
+  oprema           Oprema               @relation(fields: [opremaId], references: [id])
+  naziv            String
+  tipOkidaca       TipOkidacaPreventive @map("tip_okidaca")
+  intervalDana     Int?                 @map("interval_dana")
+  intervalKm       Int?                 @map("interval_km")
+  intervalSati     Decimal?             @map("interval_sati") @db.Decimal(12, 1)
+  poslednjiServisAt DateTime?           @map("poslednji_servis_at")
+  poslednjiKm      Int?                 @map("poslednji_km")
+  poslednjiSati    Decimal?             @map("poslednji_sati") @db.Decimal(12, 1)
+  sledeciRokAt     DateTime?            @map("sledeci_rok_at")
+  aktivan          Boolean              @default(true)
+  createdAt        DateTime             @default(now()) @map("created_at")
+
+  @@index([firmaId])
+  @@index([opremaId])
+  @@map("preventivni_planovi")
+}
+
+enum KanalNotifikacije {
+  email
+  sms
+  in_app
+}
+
+model NotifikacijaLog {
+  id        String            @id @default(uuid())
+  firmaId   String            @map("firma_id")
+  firma     Firma             @relation(fields: [firmaId], references: [id])
+  kanal     KanalNotifikacije
+  primalac  String
+  naslov    String
+  telo      String
+  status    String            @default("poslato")
+  createdAt DateTime          @default(now()) @map("created_at")
+
+  @@index([firmaId])
+  @@map("notifikacije_log")
 }

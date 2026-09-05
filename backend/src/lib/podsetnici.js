@@ -123,6 +123,47 @@ async function izracunajPodsetnike(firmaId, uloga, userId) {
     });
   }
 
+  if (uloga !== "tehnicar" && uloga !== "klijent") {
+    const planovi = await prisma.preventivniPlan.findMany({
+      where: { firmaId, aktivan: true },
+      include: { oprema: { include: { klijent: true } } },
+      take: 40,
+    });
+    const sada = new Date();
+    for (const p of planovi) {
+      let dospeo = false;
+      if (p.tipOkidaca === "vreme" && p.sledeciRokAt && new Date(p.sledeciRokAt) <= sada) {
+        dospeo = true;
+      }
+      if (
+        p.tipOkidaca === "kilometri" &&
+        p.intervalKm != null &&
+        p.oprema.kilometraza != null
+      ) {
+        const baza = p.poslednjiKm != null ? p.poslednjiKm : 0;
+        dospeo = p.oprema.kilometraza >= baza + p.intervalKm;
+      }
+      if (
+        p.tipOkidaca === "sati" &&
+        p.intervalSati != null &&
+        p.oprema.satnice != null
+      ) {
+        const baza = p.poslednjiSati != null ? Number(p.poslednjiSati) : 0;
+        dospeo = Number(p.oprema.satnice) >= baza + Number(p.intervalSati);
+      }
+      if (dospeo) {
+        stavke.push({
+          tip: "preventiva",
+          prioritet: "srednji",
+          naslov: `Preventiva · ${p.oprema.naziv}`,
+          tekst: `${p.naziv} · ${p.oprema.klijent?.nazivIliIme || ""}`,
+          opremaId: p.opremaId,
+          planId: p.id,
+        });
+      }
+    }
+  }
+
   return { broj: stavke.length, stavke };
 }
 

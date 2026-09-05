@@ -12,6 +12,10 @@ const racuniRoutes = require("./routes/racuni.routes");
 const korisniciRoutes = require("./routes/korisnici.routes");
 const podsetniciRoutes = require("./routes/podsetnici.routes");
 const magaciniRoutes = require("./routes/magacini.routes");
+const ponudeRoutes = require("./routes/ponude.routes");
+const ugovoriRoutes = require("./routes/ugovori.routes");
+const preventivaRoutes = require("./routes/preventiva.routes");
+const portalRoutes = require("./routes/portal.routes");
 
 const app = express();
 
@@ -42,6 +46,10 @@ app.use("/api/racuni", racuniRoutes);
 app.use("/api/korisnici", korisniciRoutes);
 app.use("/api/podsetnici", podsetniciRoutes);
 app.use("/api/magacini", magaciniRoutes);
+app.use("/api/ponude", ponudeRoutes);
+app.use("/api/ugovori", ugovoriRoutes);
+app.use("/api/preventiva", preventivaRoutes);
+app.use("/api/portal", portalRoutes);
 
 // Na Vercel-u putanje ponekad dođu bez /api prefiksa — dupliciraj rute
 app.use("/auth", authRoutes);
@@ -54,6 +62,10 @@ app.use("/racuni", racuniRoutes);
 app.use("/korisnici", korisniciRoutes);
 app.use("/podsetnici", podsetniciRoutes);
 app.use("/magacini", magaciniRoutes);
+app.use("/ponude", ponudeRoutes);
+app.use("/ugovori", ugovoriRoutes);
+app.use("/preventiva", preventivaRoutes);
+app.use("/portal", portalRoutes);
 
 app.use((err, req, res, next) => {
   if (err && err.code === "P2002") {

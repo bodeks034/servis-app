@@ -220,15 +220,19 @@
   <div class="sidebar">
     <div class="brand"><div class="mark">terenski servis</div><h1>Servis&nbsp;Dispečer</h1></div>
     <div class="who" id="who-info"></div>
-    <div class="nav-item active" data-view="nalozi"><span>Radni nalozi</span></div>
-    <div class="nav-item" data-view="kalendar"><span>Kalendar</span></div>
-    <div class="nav-item" data-view="podsetnici"><span>Podsetnici</span></div>
-    <div class="nav-item" data-view="oprema"><span>Oprema i vozila</span></div>
-    <div class="nav-item" data-view="klijenti"><span>Klijenti</span></div>
-    <div class="nav-item" data-view="magacin"><span>Magacin delova</span></div>
-    <div class="nav-item" data-view="racuni"><span>Računi</span></div>
-    <div class="nav-item" data-view="izvestaji"><span>Izveštaji</span></div>
-    <div class="nav-item" data-view="tim" id="nav-tim"><span>Tim</span></div>
+    <div class="nav-item active" data-view="nalozi" data-staff="1"><span>Radni nalozi</span></div>
+    <div class="nav-item" data-view="kalendar" data-staff="1"><span>Kalendar</span></div>
+    <div class="nav-item" data-view="podsetnici" data-staff="1"><span>Podsetnici</span></div>
+    <div class="nav-item" data-view="oprema" data-staff="1"><span>Oprema i vozila</span></div>
+    <div class="nav-item" data-view="klijenti" data-staff="1"><span>Klijenti</span></div>
+    <div class="nav-item" data-view="magacin" data-staff="1"><span>Magacin delova</span></div>
+    <div class="nav-item" data-view="ponude"><span>Ponude</span></div>
+    <div class="nav-item" data-view="racuni" data-staff="1"><span>Računi</span></div>
+    <div class="nav-item" data-view="ugovori" data-staff="1"><span>Ugovori</span></div>
+    <div class="nav-item" data-view="preventiva" data-staff="1"><span>Preventiva</span></div>
+    <div class="nav-item" data-view="izvestaji" data-staff="1"><span>Izveštaji</span></div>
+    <div class="nav-item" data-view="tim" id="nav-tim" data-staff="1"><span>Tim</span></div>
+    <div class="nav-item" data-view="portal" id="nav-portal"><span>Portal</span></div>
     <div class="nav-item" data-view="uputstvo"><span>Uputstvo</span></div>
     <div class="sidebar-footer"><button class="btn" id="btn-logout">Odjavi se</button></div>
   </div>
@@ -311,6 +315,7 @@
       <div class="field"><label>Garancija do</label><input id="fo-garancija" type="date"></div>
     </div>
     <div class="error-msg" id="oprema-error"></div>
+    <div id="fo-qr" class="hidden" style="margin:10px 0; text-align:center;"></div>
     <div class="modal-actions"><button class="btn" id="cancel-oprema">Otkaži</button><button class="btn btn-primary" id="save-oprema" style="width:auto;">Sačuvaj</button></div>
   </div>
 </div>
@@ -397,12 +402,101 @@
           <option value="tehnicar">Tehničar</option>
           <option value="dispecer">Dispečer</option>
           <option value="admin">Admin</option>
+          <option value="klijent">Portal klijent</option>
         </select>
+      </div>
+    </div>
+    <div class="field hidden" id="fu-klijent-wrap"><label>Klijent (portal)</label><select id="fu-klijent"></select></div>
+    <div class="field"><label>Veštine</label>
+      <div id="fu-vestine" style="display:flex;flex-wrap:wrap;gap:8px;font-size:13px;">
+        <label><input type="checkbox" value="vozila"> Vozila</label>
+        <label><input type="checkbox" value="namestaj"> Nameštaj</label>
+        <label><input type="checkbox" value="bela_tehnika"> Bela tehnika</label>
+        <label><input type="checkbox" value="masine"> Mašine</label>
+        <label><input type="checkbox" value="poljoprivreda"> Poljoprivreda</label>
+        <label><input type="checkbox" value="elektronika"> Elektronika</label>
+        <label><input type="checkbox" value="klima"> Klima</label>
+        <label><input type="checkbox" value="hidraulika"> Hidraulika</label>
       </div>
     </div>
     <div class="field"><label>Lozinka</label><input id="fu-lozinka" type="password"></div>
     <div class="error-msg" id="korisnik-error"></div>
     <div class="modal-actions"><button class="btn" id="cancel-korisnik">Otkaži</button><button class="btn btn-primary" id="save-korisnik" style="width:auto;">Dodaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: nova ponuda -->
+<div class="overlay" id="overlay-ponuda">
+  <div class="modal wide">
+    <h3>Nova ponuda</h3>
+    <div class="field-row">
+      <div class="field"><label>Klijent</label><select id="fpn-klijent"></select></div>
+      <div class="field"><label>Nalog (opciono)</label><select id="fpn-nalog"></select></div>
+    </div>
+    <div class="field"><label>Naslov</label><input id="fpn-naslov"></div>
+    <div class="field-row">
+      <div class="field"><label>PDV %</label><input id="fpn-pdv" type="number" value="20"></div>
+      <div class="field"><label>Važi do</label><input id="fpn-vazi" type="date"></div>
+    </div>
+    <div class="field"><label>Napomena</label><input id="fpn-napomena"></div>
+    <div class="section-title" style="margin-top:8px;">Stavke</div>
+    <div id="fpn-stavke"></div>
+    <button class="btn btn-sm" type="button" id="fpn-dodaj-stavku" style="margin:8px 0;">+ Stavka</button>
+    <div class="error-msg" id="ponuda-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-ponuda">Otkaži</button><button class="btn btn-primary" id="save-ponuda" style="width:auto;">Sačuvaj nacrt</button></div>
+  </div>
+</div>
+
+<!-- Modal: ugovor -->
+<div class="overlay" id="overlay-ugovor">
+  <div class="modal">
+    <h3>Novi ugovor</h3>
+    <div class="field"><label>Klijent</label><select id="fug-klijent"></select></div>
+    <div class="field"><label>Naziv</label><input id="fug-naziv" placeholder="npr. SLA održavanje 2026"></div>
+    <div class="field-row">
+      <div class="field"><label>Tip</label>
+        <select id="fug-tip">
+          <option value="po_pozivu">Po pozivu</option>
+          <option value="pausal">Paušal</option>
+          <option value="sla">SLA</option>
+        </select>
+      </div>
+      <div class="field"><label>Mesečna cena</label><input id="fug-cena" type="number" step="0.01"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>SLA reakcija (h)</label><input id="fug-sla-reak" type="number" placeholder="npr. 4"></div>
+      <div class="field"><label>SLA rešavanje (h)</label><input id="fug-sla-res" type="number" placeholder="npr. 24"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Početak</label><input id="fug-pocetak" type="date"></div>
+      <div class="field"><label>Kraj</label><input id="fug-kraj" type="date"></div>
+    </div>
+    <div class="field"><label>Napomena</label><input id="fug-napomena"></div>
+    <div class="error-msg" id="ugovor-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-ugovor">Otkaži</button><button class="btn btn-primary" id="save-ugovor" style="width:auto;">Sačuvaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: preventiva -->
+<div class="overlay" id="overlay-preventiva">
+  <div class="modal">
+    <h3>Preventivni plan</h3>
+    <div class="field"><label>Oprema</label><select id="fpr-oprema"></select></div>
+    <div class="field"><label>Naziv</label><input id="fpr-naziv" placeholder="npr. Redovni servis"></div>
+    <div class="field"><label>Okidač</label>
+      <select id="fpr-tip">
+        <option value="vreme">Vreme (dani)</option>
+        <option value="kilometri">Kilometri</option>
+        <option value="sati">Radni sati</option>
+      </select>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Interval dana</label><input id="fpr-dani" type="number" placeholder="180"></div>
+      <div class="field"><label>Interval km</label><input id="fpr-km" type="number" placeholder="10000"></div>
+    </div>
+    <div class="field"><label>Interval sati</label><input id="fpr-sati" type="number" step="0.1" placeholder="500"></div>
+    <div class="error-msg" id="preventiva-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-preventiva">Otkaži</button><button class="btn btn-primary" id="save-preventiva" style="width:auto;">Sačuvaj</button></div>
   </div>
 </div>
 

@@ -28,6 +28,7 @@ function javniKorisnik(korisnik, firma) {
     email: korisnik.email,
     telefon: korisnik.telefon,
     uloga: korisnik.uloga,
+    klijentId: korisnik.klijentId || null,
     firmaId: korisnik.firmaId,
     firmaNaziv: firma ? firma.naziv : undefined,
   };

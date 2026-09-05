@@ -79,6 +79,10 @@ let delovi = [];
 let racuni = [];
 let korisnici = [];
 let magacini = [];
+let ponude = [];
+let ugovori = [];
+let preventiva = [];
+let portalPregled = null;
 let currentView = "nalozi";
 let categoryFilter = "sve";
 let detaljNalog = null;
@@ -96,8 +100,16 @@ function jeDispecer() {
   return trenutniKorisnik && ["admin", "dispecer"].includes(trenutniKorisnik.uloga);
 }
 
+function jeKlijent() {
+  return trenutniKorisnik && trenutniKorisnik.uloga === "klijent";
+}
+
 function ulogaLabel(u) {
   return { admin: "Admin", dispecer: "Dispečer", tehnicar: "Tehničar", klijent: "Klijent" }[u] || u;
+}
+
+function ponudaStatusLabel(s) {
+  return ({ nacrt: "Nacrt", poslata: "Poslata", odobrena: "Odobrena", odbijena: "Odbijena", istekla: "Istekla" })[s] || s;
 }
 
 function statusLabel(s) {
@@ -331,6 +343,16 @@ async function ulazAkoUspesno() {
   document.getElementById("who-info").textContent =
     `${trenutniKorisnik.ime} ${trenutniKorisnik.prezime} · ${ulogaLabel(trenutniKorisnik.uloga)}${firma}`;
   document.getElementById("nav-tim").classList.toggle("hidden", !jeDispecer());
+  document.querySelectorAll("[data-staff]").forEach((el) => {
+    el.classList.toggle("hidden", jeKlijent());
+  });
+  const navPortal = document.getElementById("nav-portal");
+  if (navPortal) navPortal.classList.toggle("hidden", !jeKlijent());
+  if (jeKlijent()) {
+    currentView = "portal";
+    document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
+    if (navPortal) navPortal.classList.add("active");
+  }
   azurirajIndikatorReda();
   await ucitajSifarnike();
   await ucitajSve();
@@ -346,9 +368,22 @@ async function ucitajSifarnike() {
 }
 
 async function ucitajSve() {
+  if (jeKlijent()) {
+    portalPregled = await api("/portal/pregled").catch(() => null);
+    ponude = portalPregled?.ponude || [];
+    nalozi = portalPregled?.nalozi || [];
+    oprema = portalPregled?.oprema || [];
+    racuni = portalPregled?.racuni || [];
+    ugovori = portalPregled?.ugovori || [];
+    klijenti = portalPregled?.klijent ? [portalPregled.klijent] : [];
+    return;
+  }
   const zahtevi = [api("/klijenti"), api("/oprema"), api("/nalozi"), api("/delovi"), api("/racuni")];
   zahtevi.push(api("/korisnici").catch(() => []));
   zahtevi.push(api("/magacini").catch(() => []));
+  zahtevi.push(api("/ponude").catch(() => []));
+  zahtevi.push(api("/ugovori").catch(() => []));
+  zahtevi.push(api("/preventiva").catch(() => []));
   const rez = await Promise.all(zahtevi);
   klijenti = rez[0];
   oprema = rez[1];
@@ -357,6 +392,9 @@ async function ucitajSve() {
   racuni = rez[4];
   korisnici = rez[5] || [];
   magacini = rez[6] || [];
+  ponude = rez[7] || [];
+  ugovori = rez[8] || [];
+  preventiva = rez[9] || [];
 }
 
 function render() {
@@ -614,6 +652,237 @@ function render() {
     }
   }
 
+  else if (currentView === "ponude") {
+    document.getElementById("view-title").textContent = "Ponude";
+    btnNew.textContent = "+ Nova ponuda";
+    btnNew.classList.toggle("hidden", !jeDispecer());
+    btnNew.onclick = otvoriModalPonuda;
+
+    const filtered = ponude.filter((p) =>
+      !q || (p.brojPonude || "").toLowerCase().includes(q) ||
+      (p.naslov || "").toLowerCase().includes(q) ||
+      (p.klijent?.nazivIliIme || "").toLowerCase().includes(q)
+    );
+    let html = `<table><thead><tr><th>Broj</th><th>Klijent</th><th>Naslov</th><th>Iznos</th><th>Status</th><th></th></tr></thead><tbody>`;
+    if (!filtered.length) html += `<tr><td colspan="6" class="empty">Nema ponuda</td></tr>`;
+    for (const p of filtered) {
+      const akcije = [];
+      if (jeDispecer() && p.status === "nacrt") {
+        akcije.push(`<button class="btn btn-sm" data-p-status="${p.id}" data-st="poslata">Pošalji</button>`);
+      }
+      if (jeKlijent() && p.status === "poslata") {
+        akcije.push(`<button class="btn btn-sm btn-primary" data-p-status="${p.id}" data-st="odobrena">Odobri</button>`);
+        akcije.push(`<button class="btn btn-sm" data-p-status="${p.id}" data-st="odbijena">Odbij</button>`);
+      }
+      if (jeDispecer() && p.status === "odobrena" && !p.racun) {
+        akcije.push(`<button class="btn btn-sm btn-primary" data-p-racun="${p.id}">→ Račun</button>`);
+      }
+      if (p.racun) akcije.push(`<span class="muted mono">${esc(p.racun.brojRacuna)}</span>`);
+      html += `<tr>
+        <td class="mono">${esc(p.brojPonude)}</td>
+        <td>${esc(p.klijent?.nazivIliIme || "—")}</td>
+        <td>${esc(p.naslov)}</td>
+        <td class="mono">${Number(p.ukupanIznos).toFixed(2)}</td>
+        <td>${esc(ponudaStatusLabel(p.status))}</td>
+        <td style="white-space:nowrap;">${akcije.join(" ")}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    content.innerHTML = html;
+    content.querySelectorAll("[data-p-status]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          const az = await api(`/ponude/${b.dataset.pStatus}/status`, {
+            method: "PATCH",
+            body: JSON.stringify({ status: b.dataset.st }),
+          });
+          const i = ponude.findIndex((x) => x.id === az.id);
+          if (i >= 0) ponude[i] = az; else ponude.unshift(az);
+          render();
+        } catch (e) { showToast(e.message); }
+      });
+    });
+    content.querySelectorAll("[data-p-racun]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          const r = await api(`/ponude/${b.dataset.pRacun}/u-racun`, { method: "POST", body: "{}" });
+          racuni.unshift(r);
+          await ucitajSve();
+          showToast(`Račun ${r.brojRacuna} kreiran`);
+          currentView = "racuni";
+          document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === "racuni"));
+          render();
+        } catch (e) { showToast(e.message); }
+      });
+    });
+  }
+
+  else if (currentView === "ugovori") {
+    document.getElementById("view-title").textContent = "Ugovori / SLA";
+    btnNew.textContent = "+ Novi ugovor";
+    btnNew.classList.toggle("hidden", !jeDispecer());
+    btnNew.onclick = otvoriModalUgovor;
+
+    const filtered = ugovori.filter((u) =>
+      !q || (u.naziv || "").toLowerCase().includes(q) || (u.klijent?.nazivIliIme || "").toLowerCase().includes(q)
+    );
+    let html = `<table><thead><tr><th>Naziv</th><th>Klijent</th><th>Tip</th><th>SLA</th><th>Period</th><th>Status</th><th></th></tr></thead><tbody>`;
+    if (!filtered.length) html += `<tr><td colspan="7" class="empty">Nema ugovora</td></tr>`;
+    for (const u of filtered) {
+      const sla = [u.slaReakcijaSati != null && `reak. ${u.slaReakcijaSati}h`, u.slaResavanjeSati != null && `reš. ${u.slaResavanjeSati}h`].filter(Boolean).join(" · ") || "—";
+      const per = `${fmtDay(u.pocetak) || "—"} → ${fmtDay(u.kraj) || "∞"}`;
+      html += `<tr>
+        <td>${esc(u.naziv)}</td><td>${esc(u.klijent?.nazivIliIme || "")}</td>
+        <td>${esc(u.tip)}</td><td class="mono">${esc(sla)}</td><td class="mono">${esc(per)}</td>
+        <td>${u.aktivan ? "Aktivan" : "Neaktivan"}</td>
+        <td>${jeDispecer() ? `<button class="btn btn-sm" data-ug-tog="${u.id}" data-akt="${u.aktivan}">${u.aktivan ? "Deaktiviraj" : "Aktiviraj"}</button>` : ""}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    content.innerHTML = html;
+    content.querySelectorAll("[data-ug-tog]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          const az = await api(`/ugovori/${b.dataset.ugTog}`, {
+            method: "PATCH",
+            body: JSON.stringify({ aktivan: b.dataset.akt !== "true" }),
+          });
+          const i = ugovori.findIndex((x) => x.id === az.id);
+          if (i >= 0) ugovori[i] = az;
+          render();
+        } catch (e) { showToast(e.message); }
+      });
+    });
+  }
+
+  else if (currentView === "preventiva") {
+    document.getElementById("view-title").textContent = "Preventivni planovi";
+    btnNew.textContent = "+ Novi plan";
+    btnNew.classList.toggle("hidden", !jeDispecer());
+    btnNew.onclick = otvoriModalPreventiva;
+
+    const filtered = preventiva.filter((p) =>
+      !q || (p.naziv || "").toLowerCase().includes(q) ||
+      (p.oprema?.naziv || "").toLowerCase().includes(q) ||
+      (p.oprema?.klijent?.nazivIliIme || "").toLowerCase().includes(q)
+    );
+    let html = `<table><thead><tr><th>Plan</th><th>Oprema</th><th>Okidač</th><th>Sledeći rok</th><th></th><th></th></tr></thead><tbody>`;
+    if (!filtered.length) html += `<tr><td colspan="6" class="empty">Nema preventivnih planova</td></tr>`;
+    for (const p of filtered) {
+      const okid = p.tipOkidaca === "vreme"
+        ? `svakih ${p.intervalDana || "?"} dana`
+        : p.tipOkidaca === "kilometri"
+          ? `svakih ${p.intervalKm || "?"} km`
+          : `svakih ${p.intervalSati || "?"} h`;
+      html += `<tr class="${p.dospeo ? "low-stock" : ""}">
+        <td>${esc(p.naziv)}${p.dospeo ? ' <span class="badge" style="background:var(--danger-bg);color:var(--danger-ink);">Dospeo</span>' : ""}</td>
+        <td>${esc(p.oprema?.naziv || "")}<div class="muted">${esc(p.oprema?.klijent?.nazivIliIme || "")}</div></td>
+        <td class="mono">${esc(okid)}</td>
+        <td class="mono">${p.sledeciRokAt ? fmtDay(p.sledeciRokAt) : "—"}</td>
+        <td>${p.aktivan ? "Aktivan" : "Neaktivan"}</td>
+        <td>${jeDispecer() ? `<button class="btn btn-sm" data-pr-servis="${p.id}">Označi servis</button>` : ""}</td>
+      </tr>`;
+    }
+    html += `</tbody></table>`;
+    content.innerHTML = html;
+    content.querySelectorAll("[data-pr-servis]").forEach((b) => {
+      b.addEventListener("click", async () => {
+        try {
+          const az = await api(`/preventiva/${b.dataset.prServis}`, {
+            method: "PATCH",
+            body: JSON.stringify({ oznaciServis: true }),
+          });
+          const i = preventiva.findIndex((x) => x.id === az.id);
+          if (i >= 0) preventiva[i] = az;
+          showToast("Servis zabeležen");
+          render();
+        } catch (e) { showToast(e.message); }
+      });
+    });
+  }
+
+  else if (currentView === "portal") {
+    document.getElementById("view-title").textContent = "Klijent portal";
+    btnNew.classList.add("hidden");
+    btnNew.onclick = null;
+    content.innerHTML = `<p class="muted">Učitavanje portala…</p>`;
+    (async () => {
+      try {
+        const data = portalPregled || await api("/portal/pregled");
+        portalPregled = data;
+        const nRows = (data.nalozi || []).map((n) =>
+          `<tr><td class="mono">${esc(n.brojNaloga)}</td><td>${esc(n.naslov)}</td>
+           <td>${esc(statusLabel(n.status))}</td><td class="mono">${fmtDate(n.createdAt)}</td></tr>`
+        ).join("") || `<tr><td colspan="4" class="empty">Nema naloga</td></tr>`;
+        const pRows = (data.ponude || []).map((p) => {
+          let act = "";
+          if (p.status === "poslata") {
+            act = `<button class="btn btn-sm btn-primary" data-p-status="${p.id}" data-st="odobrena">Odobri</button>
+                   <button class="btn btn-sm" data-p-status="${p.id}" data-st="odbijena">Odbij</button>`;
+          }
+          return `<tr><td class="mono">${esc(p.brojPonude)}</td><td>${esc(p.naslov)}</td>
+            <td class="mono">${Number(p.ukupanIznos).toFixed(2)}</td><td>${esc(ponudaStatusLabel(p.status))}</td><td>${act}</td></tr>`;
+        }).join("") || `<tr><td colspan="5" class="empty">Nema ponuda</td></tr>`;
+        const oOpts = (data.oprema || []).map((o) =>
+          `<option value="${o.id}">${esc(o.naziv)}</option>`
+        ).join("");
+        content.innerHTML = `
+          <div class="stats-row">
+            <div class="stat-card"><div class="label">Klijent</div><div class="value" style="font-size:16px;">${esc(data.klijent?.nazivIliIme || "—")}</div></div>
+            <div class="stat-card"><div class="label">Nalozi</div><div class="value">${(data.nalozi || []).length}</div></div>
+            <div class="stat-card"><div class="label">Ponude</div><div class="value">${(data.ponude || []).length}</div></div>
+            <div class="stat-card"><div class="label">Ugovori</div><div class="value">${(data.ugovori || []).length}</div></div>
+          </div>
+          <div class="section-title">Prijava kvara</div>
+          <div class="field-row">
+            <div class="field"><label>Oprema</label><select id="portal-oprema">${oOpts || '<option value="">Nema opreme</option>'}</select></div>
+            <div class="field"><label>Prioritet</label>
+              <select id="portal-prio"><option value="normalan">Normalan</option><option value="hitno">Hitno</option><option value="kritican">Kritičan</option></select>
+            </div>
+          </div>
+          <div class="field"><label>Problem</label><input id="portal-naslov" placeholder="Kratak opis kvara"></div>
+          <div class="field"><label>Detalji</label><textarea id="portal-opis"></textarea></div>
+          <button class="btn btn-primary" id="portal-posalji" style="width:auto;margin-bottom:18px;">Prijavi kvar</button>
+          <div class="section-title">Moji nalozi</div>
+          <table><thead><tr><th>Broj</th><th>Naslov</th><th>Status</th><th>Datum</th></tr></thead><tbody>${nRows}</tbody></table>
+          <div class="section-title">Ponude</div>
+          <table><thead><tr><th>Broj</th><th>Naslov</th><th>Iznos</th><th>Status</th><th></th></tr></thead><tbody>${pRows}</tbody></table>`;
+        document.getElementById("portal-posalji").onclick = async () => {
+          try {
+            await api("/portal/prijava-kvara", {
+              method: "POST",
+              body: JSON.stringify({
+                opremaId: document.getElementById("portal-oprema").value,
+                naslov: document.getElementById("portal-naslov").value.trim(),
+                opis: document.getElementById("portal-opis").value.trim(),
+                prioritet: document.getElementById("portal-prio").value,
+              }),
+            });
+            showToast("Prijava poslata");
+            portalPregled = null;
+            await ucitajSve();
+            render();
+          } catch (e) { showToast(e.message); }
+        };
+        content.querySelectorAll("[data-p-status]").forEach((b) => {
+          b.addEventListener("click", async () => {
+            try {
+              await api(`/ponude/${b.dataset.pStatus}/status`, {
+                method: "PATCH",
+                body: JSON.stringify({ status: b.dataset.st }),
+              });
+              portalPregled = null;
+              await ucitajSve();
+              render();
+            } catch (e) { showToast(e.message); }
+          });
+        });
+      } catch (e) {
+        content.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+      }
+    })();
+  }
+
   else if (currentView === "racuni") {
     document.getElementById("view-title").textContent = "Računi";
     btnNew.textContent = "+ Izdaj račun";
@@ -735,10 +1004,12 @@ function render() {
     const filtered = korisnici.filter((k) =>
       !q || `${k.ime} ${k.prezime} ${k.email}`.toLowerCase().includes(q)
     );
-    let html = `<table><thead><tr><th>Ime</th><th>Uloga</th><th>Email</th><th>Telefon</th><th>Status</th><th></th></tr></thead><tbody>`;
-    if (filtered.length === 0) html += `<tr><td colspan="6" class="empty">Nema članova tima</td></tr>`;
+    let html = `<table><thead><tr><th>Ime</th><th>Uloga</th><th>Veštine</th><th>Email</th><th>Telefon</th><th>Status</th><th></th></tr></thead><tbody>`;
+    if (filtered.length === 0) html += `<tr><td colspan="7" class="empty">Nema članova tima</td></tr>`;
     for (const k of filtered) {
+      const v = Array.isArray(k.vestine) ? k.vestine.join(", ") : "";
       html += `<tr><td>${esc(k.ime)} ${esc(k.prezime)}</td><td>${ulogaLabel(k.uloga)}</td>
+        <td class="mono">${esc(v || "—")}</td>
         <td>${esc(k.email)}</td><td class="mono">${esc(k.telefon || "")}</td>
         <td>${k.aktivan ? "Aktivan" : "Neaktivan"}</td>
         <td>${jeDispecer() && k.id !== trenutniKorisnik.id
@@ -944,11 +1215,31 @@ document.querySelectorAll(".nav-item").forEach((item) => {
 });
 document.getElementById("search").addEventListener("input", render);
 
-function popuniTehnicare(selectId, izabrani) {
+function popuniTehnicare(selectId, izabrani, matchedIds) {
   const aktivni = korisnici.filter((k) => k.aktivan && k.uloga !== "klijent");
   const el = document.getElementById(selectId);
+  const matchSet = matchedIds instanceof Set ? matchedIds : null;
+  const sorted = [...aktivni].sort((a, b) => {
+    if (!matchSet) return 0;
+    return Number(matchSet.has(b.id)) - Number(matchSet.has(a.id));
+  });
   el.innerHTML = `<option value="">— nedodeljen —</option>` +
-    aktivni.map((k) => `<option value="${k.id}" ${k.id === izabrani ? "selected" : ""}>${esc(k.ime)} ${esc(k.prezime)} (${ulogaLabel(k.uloga)})</option>`).join("");
+    sorted.map((k) => {
+      const star = matchSet && matchSet.has(k.id) ? " ★" : "";
+      return `<option value="${k.id}" ${k.id === izabrani ? "selected" : ""}>${esc(k.ime)} ${esc(k.prezime)} (${ulogaLabel(k.uloga)})${star}</option>`;
+    }).join("");
+}
+
+async function osveziMatchingTehnicara() {
+  const katId = document.getElementById("f-kategorija")?.value;
+  const kat = kategorije.find((k) => k.id === katId);
+  if (!kat || !jeDispecer()) return;
+  try {
+    const lista = await api(`/korisnici/matching?kategorija=${encodeURIComponent(kat.naziv)}`);
+    const matched = new Set(lista.filter((k) => k.skillMatch).map((k) => k.id));
+    const tren = document.getElementById("f-tehnicar").value;
+    popuniTehnicare("f-tehnicar", tren, matched);
+  } catch (_) { /* ignore */ }
 }
 
 function otvoriModalNalog() {
@@ -966,10 +1257,14 @@ function otvoriModalNalog() {
     `<option value="">Nema klijenata — dodaj prvo</option>`;
   popuniTehnicare("f-tehnicar");
   osveziOpremuUFormi();
+  osveziMatchingTehnicara();
   document.getElementById("overlay-nalog").classList.add("open");
 }
 
-document.getElementById("f-kategorija").addEventListener("change", osveziOpremuUFormi);
+document.getElementById("f-kategorija").addEventListener("change", () => {
+  osveziOpremuUFormi();
+  osveziMatchingTehnicara();
+});
 document.getElementById("f-klijent").addEventListener("change", osveziOpremuUFormi);
 
 function osveziOpremuUFormi() {
@@ -1718,6 +2013,18 @@ function otvoriModalOprema(postojeca) {
     `<option value="">— interna oprema, bez klijenta —</option>` +
     klijenti.map((k) => `<option value="${k.id}" ${postojeca?.klijentId === k.id ? "selected" : ""}>${esc(k.nazivIliIme)}</option>`).join("");
   azurirajExtraPoljaOpreme();
+  const qrBox = document.getElementById("fo-qr");
+  if (qrBox) {
+    if (postojeca?.id) {
+      const url = `${location.origin}${location.pathname}?oprema=${encodeURIComponent(postojeca.id)}`;
+      const img = `https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(url)}`;
+      qrBox.classList.remove("hidden");
+      qrBox.innerHTML = `<img src="${img}" alt="QR" width="140" height="140"><div class="muted mono" style="font-size:11px;margin-top:6px;word-break:break-all;">${esc(url)}</div>`;
+    } else {
+      qrBox.classList.add("hidden");
+      qrBox.innerHTML = "";
+    }
+  }
   document.getElementById("overlay-oprema").classList.add("open");
 }
 
@@ -1896,9 +2203,21 @@ function otvoriModalKorisnik() {
   document.getElementById("fu-telefon").value = "";
   document.getElementById("fu-lozinka").value = "";
   document.getElementById("fu-uloga").value = "tehnicar";
+  document.getElementById("fu-klijent").innerHTML =
+    klijenti.map((k) => `<option value="${k.id}">${esc(k.nazivIliIme)}</option>`).join("") ||
+    `<option value="">Nema klijenata</option>`;
+  document.getElementById("fu-klijent-wrap").classList.add("hidden");
+  document.querySelectorAll("#fu-vestine input").forEach((c) => { c.checked = false; });
   document.getElementById("korisnik-error").textContent = "";
   document.getElementById("overlay-korisnik").classList.add("open");
 }
+
+document.getElementById("fu-uloga")?.addEventListener("change", () => {
+  document.getElementById("fu-klijent-wrap").classList.toggle(
+    "hidden",
+    document.getElementById("fu-uloga").value !== "klijent"
+  );
+});
 
 document.getElementById("cancel-korisnik").addEventListener("click", () => document.getElementById("overlay-korisnik").classList.remove("open"));
 
@@ -1911,7 +2230,9 @@ document.getElementById("save-korisnik").addEventListener("click", async () => {
     telefon: document.getElementById("fu-telefon").value.trim(),
     lozinka: document.getElementById("fu-lozinka").value,
     uloga: document.getElementById("fu-uloga").value,
+    vestine: [...document.querySelectorAll("#fu-vestine input:checked")].map((c) => c.value),
   };
+  if (body.uloga === "klijent") body.klijentId = document.getElementById("fu-klijent").value;
   if (!body.ime || !body.prezime || !body.email || !body.lozinka) {
     err.textContent = "Ime, prezime, email i lozinka su obavezni.";
     return;
@@ -2010,6 +2331,144 @@ document.getElementById("save-transfer")?.addEventListener("click", async () => 
   } catch (e) { err.textContent = e.message; }
 });
 
+function otvoriModalPonuda() {
+  document.getElementById("fpn-klijent").innerHTML =
+    klijenti.map((k) => `<option value="${k.id}">${esc(k.nazivIliIme)}</option>`).join("");
+  document.getElementById("fpn-nalog").innerHTML =
+    `<option value="">— bez naloga —</option>` +
+    nalozi.filter((n) => n.status !== "otkazano").slice(0, 80).map((n) =>
+      `<option value="${n.id}">${esc(n.brojNaloga)} — ${esc(n.naslov)}</option>`
+    ).join("");
+  document.getElementById("fpn-naslov").value = "";
+  document.getElementById("fpn-pdv").value = "20";
+  document.getElementById("fpn-vazi").value = "";
+  document.getElementById("fpn-napomena").value = "";
+  document.getElementById("fpn-stavke").innerHTML = "";
+  dodajStavkuPonude();
+  document.getElementById("ponuda-error").textContent = "";
+  document.getElementById("overlay-ponuda").classList.add("open");
+}
+
+function dodajStavkuPonude(opis = "", kol = 1, cena = 0) {
+  const row = document.createElement("div");
+  row.className = "field-row fpn-stavka";
+  row.innerHTML = `
+    <div class="field" style="flex:2"><label>Opis</label><input class="fpn-opis" value="${esc(opis)}"></div>
+    <div class="field"><label>Kol.</label><input class="fpn-kol" type="number" step="0.01" value="${kol}"></div>
+    <div class="field"><label>Cena</label><input class="fpn-cena" type="number" step="0.01" value="${cena}"></div>
+    <button class="btn btn-sm fpn-rm" type="button" style="align-self:flex-end;margin-bottom:12px;">×</button>`;
+  row.querySelector(".fpn-rm").onclick = () => row.remove();
+  document.getElementById("fpn-stavke").appendChild(row);
+}
+
+document.getElementById("fpn-dodaj-stavku")?.addEventListener("click", () => dodajStavkuPonude());
+document.getElementById("cancel-ponuda")?.addEventListener("click", () =>
+  document.getElementById("overlay-ponuda").classList.remove("open")
+);
+document.getElementById("save-ponuda")?.addEventListener("click", async () => {
+  const err = document.getElementById("ponuda-error");
+  const stavke = [...document.querySelectorAll(".fpn-stavka")].map((r) => ({
+    opis: r.querySelector(".fpn-opis").value.trim(),
+    kolicina: parseFloat(r.querySelector(".fpn-kol").value || "1"),
+    cena: parseFloat(r.querySelector(".fpn-cena").value || "0"),
+  })).filter((s) => s.opis);
+  const body = {
+    klijentId: document.getElementById("fpn-klijent").value,
+    nalogId: document.getElementById("fpn-nalog").value || null,
+    naslov: document.getElementById("fpn-naslov").value.trim(),
+    pdvStopa: parseFloat(document.getElementById("fpn-pdv").value || "20"),
+    vaziDo: document.getElementById("fpn-vazi").value || null,
+    napomena: document.getElementById("fpn-napomena").value.trim(),
+    stavke,
+  };
+  if (!body.naslov || !stavke.length) {
+    err.textContent = "Naslov i bar jedna stavka su obavezni.";
+    return;
+  }
+  try {
+    ponude.unshift(await api("/ponude", { method: "POST", body: JSON.stringify(body) }));
+    document.getElementById("overlay-ponuda").classList.remove("open");
+    render();
+  } catch (e) { err.textContent = e.message; }
+});
+
+function otvoriModalUgovor() {
+  document.getElementById("fug-klijent").innerHTML =
+    klijenti.map((k) => `<option value="${k.id}">${esc(k.nazivIliIme)}</option>`).join("");
+  document.getElementById("fug-naziv").value = "";
+  document.getElementById("fug-tip").value = "po_pozivu";
+  document.getElementById("fug-cena").value = "";
+  document.getElementById("fug-sla-reak").value = "";
+  document.getElementById("fug-sla-res").value = "";
+  document.getElementById("fug-pocetak").value = new Date().toISOString().slice(0, 10);
+  document.getElementById("fug-kraj").value = "";
+  document.getElementById("fug-napomena").value = "";
+  document.getElementById("ugovor-error").textContent = "";
+  document.getElementById("overlay-ugovor").classList.add("open");
+}
+document.getElementById("cancel-ugovor")?.addEventListener("click", () =>
+  document.getElementById("overlay-ugovor").classList.remove("open")
+);
+document.getElementById("save-ugovor")?.addEventListener("click", async () => {
+  const err = document.getElementById("ugovor-error");
+  const body = {
+    klijentId: document.getElementById("fug-klijent").value,
+    naziv: document.getElementById("fug-naziv").value.trim(),
+    tip: document.getElementById("fug-tip").value,
+    mesecnaCena: document.getElementById("fug-cena").value || null,
+    slaReakcijaSati: document.getElementById("fug-sla-reak").value || null,
+    slaResavanjeSati: document.getElementById("fug-sla-res").value || null,
+    pocetak: document.getElementById("fug-pocetak").value,
+    kraj: document.getElementById("fug-kraj").value || null,
+    napomena: document.getElementById("fug-napomena").value.trim(),
+  };
+  if (!body.naziv || !body.pocetak) {
+    err.textContent = "Naziv i početak su obavezni.";
+    return;
+  }
+  try {
+    ugovori.unshift(await api("/ugovori", { method: "POST", body: JSON.stringify(body) }));
+    document.getElementById("overlay-ugovor").classList.remove("open");
+    render();
+  } catch (e) { err.textContent = e.message; }
+});
+
+function otvoriModalPreventiva() {
+  document.getElementById("fpr-oprema").innerHTML =
+    oprema.map((o) => `<option value="${o.id}">${esc(o.naziv)} (${esc(o.klijent?.nazivIliIme || "—")})</option>`).join("") ||
+    `<option value="">Nema opreme</option>`;
+  document.getElementById("fpr-naziv").value = "Redovni servis";
+  document.getElementById("fpr-tip").value = "vreme";
+  document.getElementById("fpr-dani").value = "180";
+  document.getElementById("fpr-km").value = "";
+  document.getElementById("fpr-sati").value = "";
+  document.getElementById("preventiva-error").textContent = "";
+  document.getElementById("overlay-preventiva").classList.add("open");
+}
+document.getElementById("cancel-preventiva")?.addEventListener("click", () =>
+  document.getElementById("overlay-preventiva").classList.remove("open")
+);
+document.getElementById("save-preventiva")?.addEventListener("click", async () => {
+  const err = document.getElementById("preventiva-error");
+  const body = {
+    opremaId: document.getElementById("fpr-oprema").value,
+    naziv: document.getElementById("fpr-naziv").value.trim(),
+    tipOkidaca: document.getElementById("fpr-tip").value,
+    intervalDana: document.getElementById("fpr-dani").value || null,
+    intervalKm: document.getElementById("fpr-km").value || null,
+    intervalSati: document.getElementById("fpr-sati").value || null,
+  };
+  if (!body.opremaId || !body.naziv) {
+    err.textContent = "Oprema i naziv su obavezni.";
+    return;
+  }
+  try {
+    preventiva.unshift(await api("/preventiva", { method: "POST", body: JSON.stringify(body) }));
+    document.getElementById("overlay-preventiva").classList.remove("open");
+    render();
+  } catch (e) { err.textContent = e.message; }
+});
+
 async function pokreniAkoImaSesiju() {
   if (!token || !trenutniKorisnik) return;
   try {
@@ -2017,6 +2476,17 @@ async function pokreniAkoImaSesiju() {
     trenutniKorisnik = data.korisnik;
     sacuvajSesiju();
     await ulazAkoUspesno();
+    const params = new URLSearchParams(location.search);
+    const opremaId = params.get("oprema");
+    if (opremaId && !jeKlijent()) {
+      const o = oprema.find((x) => x.id === opremaId);
+      if (o) {
+        currentView = "oprema";
+        document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === "oprema"));
+        render();
+        otvoriModalOprema(o);
+      }
+    }
   } catch {
     odjaviSe(true);
   }

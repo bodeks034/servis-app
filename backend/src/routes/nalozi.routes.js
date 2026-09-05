@@ -50,10 +50,20 @@ function filterZaUlogu(req, where) {
   return where;
 }
 
+async function filterKlijentPortal(req, where) {
+  if (req.user.uloga === "klijent") {
+    const ja = await prisma.korisnik.findUnique({ where: { id: req.user.id } });
+    if (!ja?.klijentId) throw new HttpError(403, "Nalog nije vezan za klijenta.");
+    where.klijentId = ja.klijentId;
+  }
+  return where;
+}
+
 // GET /api/nalozi
 router.get("/", asyncHandler(async (req, res) => {
   const { kategorijaId, status, pretraga } = req.query;
   const where = filterZaUlogu(req, { firmaId: req.user.firmaId });
+  await filterKlijentPortal(req, where);
   if (kategorijaId) where.kategorijaId = kategorijaId;
   if (status) where.status = status;
   if (pretraga) {
@@ -108,8 +118,22 @@ router.post("/", asyncHandler(async (req, res) => {
   }
 
   const prioritetVal = prioritet || "normalan";
-  const sla =
+  let sla =
     slaRok ? new Date(slaRok) : izracunajSlaRok(prioritetVal);
+
+  const ugovor = await prisma.ugovor.findFirst({
+    where: {
+      firmaId,
+      klijentId,
+      aktivan: true,
+      OR: [{ kraj: null }, { kraj: { gte: new Date() } }],
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!slaRok && ugovor?.slaReakcijaSati) {
+    sla = new Date(Date.now() + ugovor.slaReakcijaSati * 3600 * 1000);
+  }
+
   const checklistStavke = stavkeZaTipUsluge(tipUsluge.naziv);
 
   const nalog = await prisma.$transaction(async (tx) => {

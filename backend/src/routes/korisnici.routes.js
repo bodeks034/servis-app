@@ -18,10 +18,13 @@ const publicSelect = {
   telefon: true,
   uloga: true,
   aktivan: true,
+  vestine: true,
+  klijentId: true,
   createdAt: true,
 };
 
-const DOZVOLJENE_ULOGE = ["admin", "dispecer", "tehnicar"];
+const DOZVOLJENE_ULOGE = ["admin", "dispecer", "tehnicar", "klijent"];
+const VESTINE_OPCIJE = ["vozila", "namestaj", "bela_tehnika", "masine", "poljoprivreda", "elektronika", "klima", "hidraulika"];
 
 // GET /api/korisnici — tim firme (bez lozinke)
 router.get("/", asyncHandler(async (req, res) => {
@@ -33,9 +36,42 @@ router.get("/", asyncHandler(async (req, res) => {
   res.json(korisnici);
 }));
 
+/** Predloži tehničare po veštini (kategorija naziv → skill tag) */
+router.get("/matching", requireRole("admin", "dispecer"), asyncHandler(async (req, res) => {
+  const skillMap = {
+    vozila: "vozila",
+    nameštaj: "namestaj",
+    namestaj: "namestaj",
+    "bela tehnika": "bela_tehnika",
+    "mašine i alati": "masine",
+    masine: "masine",
+    "poljoprivredna oprema": "poljoprivreda",
+  };
+  const kat = String(req.query.kategorija || "").toLowerCase();
+  const skill = skillMap[kat] || null;
+
+  const lista = await prisma.korisnik.findMany({
+    where: {
+      firmaId: req.user.firmaId,
+      aktivan: true,
+      uloga: { in: ["tehnicar", "dispecer", "admin"] },
+    },
+    select: publicSelect,
+    orderBy: { prezime: "asc" },
+  });
+
+  const scored = lista.map((k) => {
+    const v = Array.isArray(k.vestine) ? k.vestine : [];
+    const match = skill ? v.includes(skill) : true;
+    return { ...k, skillMatch: match, vestine: v };
+  });
+  scored.sort((a, b) => Number(b.skillMatch) - Number(a.skillMatch));
+  res.json(scored);
+}));
+
 // POST /api/korisnici — admin/dispečer dodaje tehničara ili kolegu
 router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res) => {
-  const { ime, prezime, email, lozinka, telefon, uloga } = req.body;
+  const { ime, prezime, email, lozinka, telefon, uloga, vestine, klijentId } = req.body;
   if (!ime || !prezime || !email || !lozinka) {
     throw new HttpError(400, "Ime, prezime, email i lozinka su obavezni.");
   }
@@ -48,11 +84,25 @@ router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res)
     throw new HttpError(403, "Samo admin može da doda drugog admina.");
   }
 
+  let vezaniKlijentId = null;
+  if (novaUloga === "klijent") {
+    if (!klijentId) throw new HttpError(400, "Za portal klijenta obavezan je klijentId.");
+    const k = await prisma.klijent.findFirst({
+      where: { id: klijentId, firmaId: req.user.firmaId },
+    });
+    if (!k) throw new HttpError(400, "Klijent nije pronađen.");
+    vezaniKlijentId = k.id;
+  }
+
   const emailNorm = String(email).trim().toLowerCase();
   const postojeci = await prisma.korisnik.findUnique({ where: { email: emailNorm } });
   if (postojeci) {
     throw new HttpError(409, "Korisnik sa ovim emailom već postoji.");
   }
+
+  const vestineLista = Array.isArray(vestine)
+    ? vestine.filter((v) => VESTINE_OPCIJE.includes(v))
+    : [];
 
   const korisnik = await prisma.korisnik.create({
     data: {
@@ -63,6 +113,8 @@ router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res)
       telefon: telefon ? String(telefon).trim() : null,
       passwordHash: await bcrypt.hash(lozinka, 10),
       uloga: novaUloga,
+      vestine: vestineLista,
+      klijentId: vezaniKlijentId,
     },
     select: publicSelect,
   });
@@ -79,7 +131,7 @@ router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res)
 // PATCH /api/korisnici/:id — aktivacija / deaktivacija, izmena uloge
 router.patch("/:id", requireRole("admin", "dispecer"), asyncHandler(async (req, res) => {
   const { id } = req.params;
-  const { aktivan, uloga, telefon } = req.body;
+  const { aktivan, uloga, telefon, vestine } = req.body;
 
   const postojeci = await prisma.korisnik.findFirst({
     where: { id, firmaId: req.user.firmaId },
@@ -97,6 +149,11 @@ router.patch("/:id", requireRole("admin", "dispecer"), asyncHandler(async (req, 
       throw new HttpError(403, "Samo admin može da postavi admina.");
     }
     data.uloga = uloga;
+  }
+  if (vestine !== undefined) {
+    data.vestine = Array.isArray(vestine)
+      ? vestine.filter((v) => VESTINE_OPCIJE.includes(v))
+      : [];
   }
 
   const korisnik = await prisma.korisnik.update({
