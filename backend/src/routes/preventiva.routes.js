@@ -95,6 +95,14 @@ router.patch("/:id", requireRole("admin", "dispecer"), asyncHandler(async (req, 
   const data = {};
   if (req.body.naziv !== undefined) data.naziv = String(req.body.naziv).trim();
   if (typeof req.body.aktivan === "boolean") data.aktivan = req.body.aktivan;
+  if (req.body.tipOkidaca !== undefined) data.tipOkidaca = req.body.tipOkidaca;
+  if (req.body.opremaId !== undefined) {
+    const op = await prisma.oprema.findFirst({
+      where: { id: req.body.opremaId, firmaId: req.user.firmaId },
+    });
+    if (!op) throw new HttpError(400, "Oprema nije pronađena.");
+    data.opremaId = op.id;
+  }
   if (req.body.intervalDana !== undefined) data.intervalDana = parseInt(req.body.intervalDana, 10) || null;
   if (req.body.intervalKm !== undefined) data.intervalKm = parseInt(req.body.intervalKm, 10) || null;
   if (req.body.intervalSati !== undefined) data.intervalSati = Number(req.body.intervalSati) || null;

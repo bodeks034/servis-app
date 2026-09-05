@@ -97,6 +97,74 @@ router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res)
   res.status(201).json(ponuda);
 }));
 
+/** Izmena sadržaja ponude (nacrt / poslata) */
+router.patch("/:id", requireRole("admin", "dispecer"), asyncHandler(async (req, res) => {
+  const p = await prisma.ponuda.findFirst({
+    where: { id: req.params.id, firmaId: req.user.firmaId },
+    include: { racun: true },
+  });
+  if (!p) throw new HttpError(404, "Ponuda nije pronađena.");
+  if (p.racun) throw new HttpError(400, "Ponuda već ima račun — ne može se menjati.");
+  if (!["nacrt", "poslata", "odbijena"].includes(p.status)) {
+    throw new HttpError(400, "Odobrena / istekla ponuda se ne može menjati.");
+  }
+
+  const {
+    klijentId, nalogId, naslov, napomena, pdvStopa, vaziDo, stavke, status,
+  } = req.body;
+
+  if (klijentId) {
+    const klijent = await prisma.klijent.findFirst({
+      where: { id: klijentId, firmaId: req.user.firmaId },
+    });
+    if (!klijent) throw new HttpError(400, "Klijent nije pronađen.");
+  }
+
+  const stopa = Number(pdvStopa != null ? pdvStopa : p.pdvStopa);
+  let mapped = null;
+  let iznosiMap = null;
+  if (Array.isArray(stavke)) {
+    if (!stavke.length) throw new HttpError(400, "Dodajte bar jednu stavku.");
+    mapped = stavke.map((s, i) => ({
+      opis: String(s.opis || "Stavka").trim(),
+      kolicina: Number(s.kolicina || 1),
+      cena: Number(s.cena || 0),
+      redosled: i,
+    }));
+    iznosiMap = iznosi(mapped, stopa);
+  }
+
+  const data = {};
+  if (klijentId) data.klijentId = klijentId;
+  if (nalogId !== undefined) data.nalogId = nalogId || null;
+  if (naslov !== undefined) data.naslov = String(naslov).trim();
+  if (napomena !== undefined) data.napomena = napomena || null;
+  if (pdvStopa !== undefined) data.pdvStopa = stopa;
+  if (vaziDo !== undefined) data.vaziDo = vaziDo ? new Date(vaziDo) : null;
+  if (status && ["nacrt", "poslata", "odbijena"].includes(status)) data.status = status;
+  if (iznosiMap) {
+    data.iznosBezPdv = iznosiMap.iznosBezPdv;
+    data.iznosPdv = iznosiMap.iznosPdv;
+    data.ukupanIznos = iznosiMap.ukupanIznos;
+  }
+
+  const azurirana = await prisma.$transaction(async (tx) => {
+    if (mapped) {
+      await tx.ponudaStavka.deleteMany({ where: { ponudaId: p.id } });
+      await tx.ponudaStavka.createMany({
+        data: mapped.map((s) => ({ ...s, ponudaId: p.id })),
+      });
+    }
+    return tx.ponuda.update({
+      where: { id: p.id },
+      data,
+      include,
+    });
+  });
+
+  res.json(azurirana);
+}));
+
 router.patch("/:id/status", asyncHandler(async (req, res) => {
   const { status } = req.body;
   const dozvoljeno = ["nacrt", "poslata", "odobrena", "odbijena", "istekla"];

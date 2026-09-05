@@ -656,7 +656,7 @@ function render() {
     document.getElementById("view-title").textContent = "Ponude";
     btnNew.textContent = "+ Nova ponuda";
     btnNew.classList.toggle("hidden", !jeDispecer());
-    btnNew.onclick = otvoriModalPonuda;
+    btnNew.onclick = () => otvoriModalPonuda();
 
     const filtered = ponude.filter((p) =>
       !q || (p.brojPonude || "").toLowerCase().includes(q) ||
@@ -667,6 +667,7 @@ function render() {
     if (!filtered.length) html += `<tr><td colspan="6" class="empty">Nema ponuda</td></tr>`;
     for (const p of filtered) {
       const akcije = [];
+      akcije.push(`<button class="btn btn-sm" data-p-edit="${p.id}">Otvori</button>`);
       if (jeDispecer() && p.status === "nacrt") {
         akcije.push(`<button class="btn btn-sm" data-p-status="${p.id}" data-st="poslata">Pošalji</button>`);
       }
@@ -678,19 +679,33 @@ function render() {
         akcije.push(`<button class="btn btn-sm btn-primary" data-p-racun="${p.id}">→ Račun</button>`);
       }
       if (p.racun) akcije.push(`<span class="muted mono">${esc(p.racun.brojRacuna)}</span>`);
-      html += `<tr>
+      html += `<tr class="clickable" data-p-row="${p.id}">
         <td class="mono">${esc(p.brojPonude)}</td>
         <td>${esc(p.klijent?.nazivIliIme || "—")}</td>
         <td>${esc(p.naslov)}</td>
         <td class="mono">${Number(p.ukupanIznos).toFixed(2)}</td>
         <td>${esc(ponudaStatusLabel(p.status))}</td>
-        <td style="white-space:nowrap;">${akcije.join(" ")}</td>
+        <td style="white-space:nowrap;" onclick="event.stopPropagation()">${akcije.join(" ")}</td>
       </tr>`;
     }
     html += `</tbody></table>`;
     content.innerHTML = html;
+    content.querySelectorAll("[data-p-row]").forEach((row) => {
+      row.addEventListener("click", () => {
+        const p = ponude.find((x) => x.id === row.dataset.pRow);
+        if (p) otvoriModalPonuda(p);
+      });
+    });
+    content.querySelectorAll("[data-p-edit]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const p = ponude.find((x) => x.id === b.dataset.pEdit);
+        if (p) otvoriModalPonuda(p);
+      });
+    });
     content.querySelectorAll("[data-p-status]").forEach((b) => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
         try {
           const az = await api(`/ponude/${b.dataset.pStatus}/status`, {
             method: "PATCH",
@@ -699,11 +714,12 @@ function render() {
           const i = ponude.findIndex((x) => x.id === az.id);
           if (i >= 0) ponude[i] = az; else ponude.unshift(az);
           render();
-        } catch (e) { showToast(e.message); }
+        } catch (err) { showToast(err.message); }
       });
     });
     content.querySelectorAll("[data-p-racun]").forEach((b) => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
         try {
           const r = await api(`/ponude/${b.dataset.pRacun}/u-racun`, { method: "POST", body: "{}" });
           racuni.unshift(r);
@@ -712,7 +728,7 @@ function render() {
           currentView = "racuni";
           document.querySelectorAll(".nav-item").forEach((i) => i.classList.toggle("active", i.dataset.view === "racuni"));
           render();
-        } catch (e) { showToast(e.message); }
+        } catch (err) { showToast(err.message); }
       });
     });
   }
@@ -721,7 +737,7 @@ function render() {
     document.getElementById("view-title").textContent = "Ugovori / SLA";
     btnNew.textContent = "+ Novi ugovor";
     btnNew.classList.toggle("hidden", !jeDispecer());
-    btnNew.onclick = otvoriModalUgovor;
+    btnNew.onclick = () => otvoriModalUgovor();
 
     const filtered = ugovori.filter((u) =>
       !q || (u.naziv || "").toLowerCase().includes(q) || (u.klijent?.nazivIliIme || "").toLowerCase().includes(q)
@@ -731,17 +747,34 @@ function render() {
     for (const u of filtered) {
       const sla = [u.slaReakcijaSati != null && `reak. ${u.slaReakcijaSati}h`, u.slaResavanjeSati != null && `reš. ${u.slaResavanjeSati}h`].filter(Boolean).join(" · ") || "—";
       const per = `${fmtDay(u.pocetak) || "—"} → ${fmtDay(u.kraj) || "∞"}`;
-      html += `<tr>
+      html += `<tr class="clickable" data-ug-row="${u.id}">
         <td>${esc(u.naziv)}</td><td>${esc(u.klijent?.nazivIliIme || "")}</td>
         <td>${esc(u.tip)}</td><td class="mono">${esc(sla)}</td><td class="mono">${esc(per)}</td>
         <td>${u.aktivan ? "Aktivan" : "Neaktivan"}</td>
-        <td>${jeDispecer() ? `<button class="btn btn-sm" data-ug-tog="${u.id}" data-akt="${u.aktivan}">${u.aktivan ? "Deaktiviraj" : "Aktiviraj"}</button>` : ""}</td>
+        <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+          <button class="btn btn-sm" data-ug-edit="${u.id}">Otvori</button>
+          ${jeDispecer() ? `<button class="btn btn-sm" data-ug-tog="${u.id}" data-akt="${u.aktivan}">${u.aktivan ? "Deaktiviraj" : "Aktiviraj"}</button>` : ""}
+        </td>
       </tr>`;
     }
     html += `</tbody></table>`;
     content.innerHTML = html;
+    content.querySelectorAll("[data-ug-row]").forEach((row) => {
+      row.addEventListener("click", () => {
+        const u = ugovori.find((x) => x.id === row.dataset.ugRow);
+        if (u) otvoriModalUgovor(u);
+      });
+    });
+    content.querySelectorAll("[data-ug-edit]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const u = ugovori.find((x) => x.id === b.dataset.ugEdit);
+        if (u) otvoriModalUgovor(u);
+      });
+    });
     content.querySelectorAll("[data-ug-tog]").forEach((b) => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
         try {
           const az = await api(`/ugovori/${b.dataset.ugTog}`, {
             method: "PATCH",
@@ -750,7 +783,7 @@ function render() {
           const i = ugovori.findIndex((x) => x.id === az.id);
           if (i >= 0) ugovori[i] = az;
           render();
-        } catch (e) { showToast(e.message); }
+        } catch (err) { showToast(err.message); }
       });
     });
   }
@@ -759,7 +792,7 @@ function render() {
     document.getElementById("view-title").textContent = "Preventivni planovi";
     btnNew.textContent = "+ Novi plan";
     btnNew.classList.toggle("hidden", !jeDispecer());
-    btnNew.onclick = otvoriModalPreventiva;
+    btnNew.onclick = () => otvoriModalPreventiva();
 
     const filtered = preventiva.filter((p) =>
       !q || (p.naziv || "").toLowerCase().includes(q) ||
@@ -774,19 +807,36 @@ function render() {
         : p.tipOkidaca === "kilometri"
           ? `svakih ${p.intervalKm || "?"} km`
           : `svakih ${p.intervalSati || "?"} h`;
-      html += `<tr class="${p.dospeo ? "low-stock" : ""}">
+      html += `<tr class="clickable ${p.dospeo ? "low-stock" : ""}" data-pr-row="${p.id}">
         <td>${esc(p.naziv)}${p.dospeo ? ' <span class="badge" style="background:var(--danger-bg);color:var(--danger-ink);">Dospeo</span>' : ""}</td>
         <td>${esc(p.oprema?.naziv || "")}<div class="muted">${esc(p.oprema?.klijent?.nazivIliIme || "")}</div></td>
         <td class="mono">${esc(okid)}</td>
         <td class="mono">${p.sledeciRokAt ? fmtDay(p.sledeciRokAt) : "—"}</td>
         <td>${p.aktivan ? "Aktivan" : "Neaktivan"}</td>
-        <td>${jeDispecer() ? `<button class="btn btn-sm" data-pr-servis="${p.id}">Označi servis</button>` : ""}</td>
+        <td style="white-space:nowrap;" onclick="event.stopPropagation()">
+          <button class="btn btn-sm" data-pr-edit="${p.id}">Otvori</button>
+          ${jeDispecer() ? `<button class="btn btn-sm" data-pr-servis="${p.id}">Označi servis</button>` : ""}
+        </td>
       </tr>`;
     }
     html += `</tbody></table>`;
     content.innerHTML = html;
+    content.querySelectorAll("[data-pr-row]").forEach((row) => {
+      row.addEventListener("click", () => {
+        const p = preventiva.find((x) => x.id === row.dataset.prRow);
+        if (p) otvoriModalPreventiva(p);
+      });
+    });
+    content.querySelectorAll("[data-pr-edit]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const p = preventiva.find((x) => x.id === b.dataset.prEdit);
+        if (p) otvoriModalPreventiva(p);
+      });
+    });
     content.querySelectorAll("[data-pr-servis]").forEach((b) => {
-      b.addEventListener("click", async () => {
+      b.addEventListener("click", async (e) => {
+        e.stopPropagation();
         try {
           const az = await api(`/preventiva/${b.dataset.prServis}`, {
             method: "PATCH",
@@ -796,7 +846,7 @@ function render() {
           if (i >= 0) preventiva[i] = az;
           showToast("Servis zabeležen");
           render();
-        } catch (e) { showToast(e.message); }
+        } catch (err) { showToast(err.message); }
       });
     });
   }
@@ -2331,21 +2381,46 @@ document.getElementById("save-transfer")?.addEventListener("click", async () => 
   } catch (e) { err.textContent = e.message; }
 });
 
-function otvoriModalPonuda() {
+function otvoriModalPonuda(postojeca) {
+  const p = postojeca || null;
+  const mozeIzmena = jeDispecer() && (!p || ["nacrt", "poslata", "odbijena"].includes(p.status)) && !p?.racun;
+  document.getElementById("ponuda-modal-title").textContent = p
+    ? `${p.brojPonude} — ${ponudaStatusLabel(p.status)}`
+    : "Nova ponuda";
+  document.getElementById("fpn-id").value = p?.id || "";
   document.getElementById("fpn-klijent").innerHTML =
-    klijenti.map((k) => `<option value="${k.id}">${esc(k.nazivIliIme)}</option>`).join("");
+    klijenti.map((k) => `<option value="${k.id}" ${p?.klijentId === k.id ? "selected" : ""}>${esc(k.nazivIliIme)}</option>`).join("");
   document.getElementById("fpn-nalog").innerHTML =
     `<option value="">— bez naloga —</option>` +
     nalozi.filter((n) => n.status !== "otkazano").slice(0, 80).map((n) =>
-      `<option value="${n.id}">${esc(n.brojNaloga)} — ${esc(n.naslov)}</option>`
+      `<option value="${n.id}" ${p?.nalogId === n.id ? "selected" : ""}>${esc(n.brojNaloga)} — ${esc(n.naslov)}</option>`
     ).join("");
-  document.getElementById("fpn-naslov").value = "";
-  document.getElementById("fpn-pdv").value = "20";
-  document.getElementById("fpn-vazi").value = "";
-  document.getElementById("fpn-napomena").value = "";
+  document.getElementById("fpn-naslov").value = p?.naslov || "";
+  document.getElementById("fpn-pdv").value = p?.pdvStopa != null ? p.pdvStopa : "20";
+  document.getElementById("fpn-vazi").value = fmtDay(p?.vaziDo) || "";
+  document.getElementById("fpn-napomena").value = p?.napomena || "";
   document.getElementById("fpn-stavke").innerHTML = "";
-  dodajStavkuPonude();
+  const stavke = p?.stavke?.length ? p.stavke : [{ opis: "", kolicina: 1, cena: 0 }];
+  stavke.forEach((s) => dodajStavkuPonude(s.opis || "", s.kolicina || 1, s.cena || 0));
+  const info = document.getElementById("fpn-info");
+  if (p) {
+    info.textContent = `Ukupno: ${Number(p.ukupanIznos).toFixed(2)} RSD` +
+      (p.nalog ? ` · Nalog ${p.nalog.brojNaloga}` : "") +
+      (p.racun ? ` · Račun ${p.racun.brojRacuna}` : "");
+  } else {
+    info.textContent = "";
+  }
   document.getElementById("ponuda-error").textContent = "";
+  const saveBtn = document.getElementById("save-ponuda");
+  saveBtn.classList.toggle("hidden", !mozeIzmena && !!p);
+  saveBtn.textContent = p ? "Sačuvaj izmene" : "Sačuvaj nacrt";
+  document.getElementById("fpn-dodaj-stavku").classList.toggle("hidden", !mozeIzmena && !!p);
+  ["fpn-klijent", "fpn-nalog", "fpn-naslov", "fpn-pdv", "fpn-vazi", "fpn-napomena"].forEach((id) => {
+    document.getElementById(id).disabled = !mozeIzmena && !!p;
+  });
+  document.querySelectorAll("#fpn-stavke input, #fpn-stavke button").forEach((el) => {
+    el.disabled = !mozeIzmena && !!p;
+  });
   document.getElementById("overlay-ponuda").classList.add("open");
 }
 
@@ -2367,6 +2442,7 @@ document.getElementById("cancel-ponuda")?.addEventListener("click", () =>
 );
 document.getElementById("save-ponuda")?.addEventListener("click", async () => {
   const err = document.getElementById("ponuda-error");
+  const id = document.getElementById("fpn-id").value;
   const stavke = [...document.querySelectorAll(".fpn-stavka")].map((r) => ({
     opis: r.querySelector(".fpn-opis").value.trim(),
     kolicina: parseFloat(r.querySelector(".fpn-kol").value || "1"),
@@ -2386,24 +2462,37 @@ document.getElementById("save-ponuda")?.addEventListener("click", async () => {
     return;
   }
   try {
-    ponude.unshift(await api("/ponude", { method: "POST", body: JSON.stringify(body) }));
+    if (id) {
+      const az = await api(`/ponude/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const i = ponude.findIndex((x) => x.id === id);
+      if (i >= 0) ponude[i] = az;
+    } else {
+      ponude.unshift(await api("/ponude", { method: "POST", body: JSON.stringify(body) }));
+    }
     document.getElementById("overlay-ponuda").classList.remove("open");
     render();
   } catch (e) { err.textContent = e.message; }
 });
 
-function otvoriModalUgovor() {
+function otvoriModalUgovor(postojeci) {
+  const u = postojeci || null;
+  document.getElementById("ugovor-modal-title").textContent = u ? "Izmena ugovora" : "Novi ugovor";
+  document.getElementById("fug-id").value = u?.id || "";
   document.getElementById("fug-klijent").innerHTML =
-    klijenti.map((k) => `<option value="${k.id}">${esc(k.nazivIliIme)}</option>`).join("");
-  document.getElementById("fug-naziv").value = "";
-  document.getElementById("fug-tip").value = "po_pozivu";
-  document.getElementById("fug-cena").value = "";
-  document.getElementById("fug-sla-reak").value = "";
-  document.getElementById("fug-sla-res").value = "";
-  document.getElementById("fug-pocetak").value = new Date().toISOString().slice(0, 10);
-  document.getElementById("fug-kraj").value = "";
-  document.getElementById("fug-napomena").value = "";
+    klijenti.map((k) => `<option value="${k.id}" ${u?.klijentId === k.id ? "selected" : ""}>${esc(k.nazivIliIme)}</option>`).join("");
+  document.getElementById("fug-naziv").value = u?.naziv || "";
+  document.getElementById("fug-tip").value = u?.tip || "po_pozivu";
+  document.getElementById("fug-cena").value = u?.mesecnaCena ?? "";
+  document.getElementById("fug-sla-reak").value = u?.slaReakcijaSati ?? "";
+  document.getElementById("fug-sla-res").value = u?.slaResavanjeSati ?? "";
+  document.getElementById("fug-pocetak").value = fmtDay(u?.pocetak) || new Date().toISOString().slice(0, 10);
+  document.getElementById("fug-kraj").value = fmtDay(u?.kraj) || "";
+  document.getElementById("fug-napomena").value = u?.napomena || "";
+  document.getElementById("fug-aktivan").checked = u ? !!u.aktivan : true;
   document.getElementById("ugovor-error").textContent = "";
+  const saveBtn = document.getElementById("save-ugovor");
+  saveBtn.classList.toggle("hidden", !jeDispecer());
+  document.getElementById("fug-klijent").disabled = !!u;
   document.getElementById("overlay-ugovor").classList.add("open");
 }
 document.getElementById("cancel-ugovor")?.addEventListener("click", () =>
@@ -2411,6 +2500,7 @@ document.getElementById("cancel-ugovor")?.addEventListener("click", () =>
 );
 document.getElementById("save-ugovor")?.addEventListener("click", async () => {
   const err = document.getElementById("ugovor-error");
+  const id = document.getElementById("fug-id").value;
   const body = {
     klijentId: document.getElementById("fug-klijent").value,
     naziv: document.getElementById("fug-naziv").value.trim(),
@@ -2421,28 +2511,40 @@ document.getElementById("save-ugovor")?.addEventListener("click", async () => {
     pocetak: document.getElementById("fug-pocetak").value,
     kraj: document.getElementById("fug-kraj").value || null,
     napomena: document.getElementById("fug-napomena").value.trim(),
+    aktivan: document.getElementById("fug-aktivan").checked,
   };
   if (!body.naziv || !body.pocetak) {
     err.textContent = "Naziv i početak su obavezni.";
     return;
   }
   try {
-    ugovori.unshift(await api("/ugovori", { method: "POST", body: JSON.stringify(body) }));
+    if (id) {
+      const az = await api(`/ugovori/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const i = ugovori.findIndex((x) => x.id === id);
+      if (i >= 0) ugovori[i] = az;
+    } else {
+      ugovori.unshift(await api("/ugovori", { method: "POST", body: JSON.stringify(body) }));
+    }
     document.getElementById("overlay-ugovor").classList.remove("open");
     render();
   } catch (e) { err.textContent = e.message; }
 });
 
-function otvoriModalPreventiva() {
+function otvoriModalPreventiva(postojeci) {
+  const p = postojeci || null;
+  document.getElementById("preventiva-modal-title").textContent = p ? "Izmena preventivnog plana" : "Preventivni plan";
+  document.getElementById("fpr-id").value = p?.id || "";
   document.getElementById("fpr-oprema").innerHTML =
-    oprema.map((o) => `<option value="${o.id}">${esc(o.naziv)} (${esc(o.klijent?.nazivIliIme || "—")})</option>`).join("") ||
+    oprema.map((o) => `<option value="${o.id}" ${p?.opremaId === o.id ? "selected" : ""}>${esc(o.naziv)} (${esc(o.klijent?.nazivIliIme || "—")})</option>`).join("") ||
     `<option value="">Nema opreme</option>`;
-  document.getElementById("fpr-naziv").value = "Redovni servis";
-  document.getElementById("fpr-tip").value = "vreme";
-  document.getElementById("fpr-dani").value = "180";
-  document.getElementById("fpr-km").value = "";
-  document.getElementById("fpr-sati").value = "";
+  document.getElementById("fpr-naziv").value = p?.naziv || "Redovni servis";
+  document.getElementById("fpr-tip").value = p?.tipOkidaca || "vreme";
+  document.getElementById("fpr-dani").value = p?.intervalDana ?? (p ? "" : "180");
+  document.getElementById("fpr-km").value = p?.intervalKm ?? "";
+  document.getElementById("fpr-sati").value = p?.intervalSati ?? "";
+  document.getElementById("fpr-aktivan").checked = p ? !!p.aktivan : true;
   document.getElementById("preventiva-error").textContent = "";
+  document.getElementById("save-preventiva").classList.toggle("hidden", !jeDispecer());
   document.getElementById("overlay-preventiva").classList.add("open");
 }
 document.getElementById("cancel-preventiva")?.addEventListener("click", () =>
@@ -2450,6 +2552,7 @@ document.getElementById("cancel-preventiva")?.addEventListener("click", () =>
 );
 document.getElementById("save-preventiva")?.addEventListener("click", async () => {
   const err = document.getElementById("preventiva-error");
+  const id = document.getElementById("fpr-id").value;
   const body = {
     opremaId: document.getElementById("fpr-oprema").value,
     naziv: document.getElementById("fpr-naziv").value.trim(),
@@ -2457,13 +2560,20 @@ document.getElementById("save-preventiva")?.addEventListener("click", async () =
     intervalDana: document.getElementById("fpr-dani").value || null,
     intervalKm: document.getElementById("fpr-km").value || null,
     intervalSati: document.getElementById("fpr-sati").value || null,
+    aktivan: document.getElementById("fpr-aktivan").checked,
   };
   if (!body.opremaId || !body.naziv) {
     err.textContent = "Oprema i naziv su obavezni.";
     return;
   }
   try {
-    preventiva.unshift(await api("/preventiva", { method: "POST", body: JSON.stringify(body) }));
+    if (id) {
+      const az = await api(`/preventiva/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+      const i = preventiva.findIndex((x) => x.id === id);
+      if (i >= 0) preventiva[i] = az;
+    } else {
+      preventiva.unshift(await api("/preventiva", { method: "POST", body: JSON.stringify(body) }));
+    }
     document.getElementById("overlay-preventiva").classList.remove("open");
     render();
   } catch (e) { err.textContent = e.message; }
