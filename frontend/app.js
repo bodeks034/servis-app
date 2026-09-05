@@ -86,6 +86,12 @@ let portalPregled = null;
 let currentView = "nalozi";
 let categoryFilter = "sve";
 let detaljNalog = null;
+let kalendarStanje = {
+  view: "mesec", // mesec | nedelja | agenda
+  anchor: new Date(),
+  tehnicarId: "",
+  selectedDay: null,
+};
 const catBadgeClass = {};
 
 function esc(s) {
@@ -465,44 +471,18 @@ function render() {
   }
 
   else if (currentView === "kalendar") {
-    document.getElementById("view-title").textContent = "Kalendar";
-    btnNew.classList.add("hidden");
-    btnNew.onclick = null;
-    content.innerHTML = `<p class="muted">Učitavanje...</p>`;
-    (async () => {
-      try {
-        const od = new Date(); od.setHours(0,0,0,0);
-        const doD = new Date(); doD.setDate(doD.getDate() + 14); doD.setHours(23,59,59,999);
-        const lista = await api(`/podsetnici/kalendar?od=${encodeURIComponent(od.toISOString())}&do=${encodeURIComponent(doD.toISOString())}`);
-        if (!lista.length) {
-          content.innerHTML = `<div class="empty">Nema zakazanih naloga u narednih 14 dana.</div>`;
-          return;
-        }
-        const byDay = {};
-        for (const n of lista) {
-          const key = new Date(n.zakazanoZa).toLocaleDateString("sr-RS", { weekday: "long", day: "numeric", month: "long" });
-          (byDay[key] ||= []).push(n);
-        }
-        let html = "";
-        for (const [dan, items] of Object.entries(byDay)) {
-          html += `<div class="cal-day"><h4>${esc(dan)}</h4>`;
-          for (const n of items) {
-            html += `<div class="cal-item" data-id="${n.id}">
-              <strong class="mono">${esc(n.brojNaloga)}</strong> ${esc(n.naslov)}
-              <div class="muted">${esc(n.klijent?.nazivIliIme || "")} · ${new Date(n.zakazanoZa).toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" })}
-              ${n.dodeljeniTehnicar ? ` · ${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}` : ""}</div>
-            </div>`;
-          }
-          html += `</div>`;
-        }
-        content.innerHTML = html;
-        content.querySelectorAll(".cal-item").forEach((el) => {
-          el.addEventListener("click", () => otvoriDetaljNaloga(el.dataset.id));
-        });
-      } catch (e) {
-        content.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+    document.getElementById("view-title").textContent = "Kalendar zakazivanja";
+    btnNew.textContent = "+ Novi nalog";
+    btnNew.classList.toggle("hidden", !jeDispecer());
+    btnNew.onclick = () => {
+      otvoriModalNalog();
+      if (kalendarStanje.selectedDay) {
+        const d = new Date(kalendarStanje.selectedDay);
+        d.setHours(9, 0, 0, 0);
+        document.getElementById("f-zakazano").value = uDatetimeLocal(d);
       }
-    })();
+    };
+    renderKalendar();
   }
 
   else if (currentView === "podsetnici") {
@@ -1189,8 +1169,11 @@ function uputstvoHtml() {
     <div class="guide-sec" id="g-kalendar">
       <h3>7. Kalendar i podsetnici</h3>
       <ul>
-        <li><strong>Kalendar</strong> — nalozi raspoređeni po zakazanom terminu; klik otvara detalj.</li>
-        <li><strong>Podsetnici</strong> — predstojeća održavanja i istek garancije.</li>
+        <li><strong>Kalendar</strong> — mesec / nedelja / agenda; filter po tehničaru.</li>
+        <li>Prevuci nezakazani nalog na dan (ili u sat u nedeljnom prikazu) da zakazuješ termin.</li>
+        <li>Klik na događaj otvara detalj; klik na prazan dan bira datum za novi nalog.</li>
+        <li>Sistem upozorava ako isti tehničar ima preklapanje termina.</li>
+        <li><strong>Podsetnici</strong> — SLA, zaliha, preventiva, zakazano danas/sutra.</li>
       </ul>
     </div>
 
@@ -1213,6 +1196,334 @@ function uputstvoHtml() {
       <div class="tip">Ako nešto „ne radi“, prvo proveri da li si ulogovan i da li je API adresa tačna na ekranu prijave.</div>
     </div>
   </div>`;
+}
+
+function startOfWeek(d) {
+  const x = new Date(d);
+  const day = (x.getDay() + 6) % 7; // ponedeljak = 0
+  x.setDate(x.getDate() - day);
+  x.setHours(0, 0, 0, 0);
+  return x;
+}
+function startOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth(), 1);
+}
+function endOfMonth(d) {
+  return new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59, 999);
+}
+function sameDay(a, b) {
+  return a && b && a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+function dayKey(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function calChipClass(n) {
+  if (n.status === "zavrseno") return "zavrseno";
+  if (n.prioritet === "kritican") return "kritican";
+  if (n.prioritet === "hitno") return "hitno";
+  return "";
+}
+function nadjiKonflikte(nalozi) {
+  const conflicts = [];
+  const byTech = {};
+  for (const n of nalozi) {
+    if (!n.dodeljeniTehnicarId || !n.zakazanoZa) continue;
+    (byTech[n.dodeljeniTehnicarId] ||= []).push(n);
+  }
+  for (const lista of Object.values(byTech)) {
+    lista.sort((a, b) => new Date(a.zakazanoZa) - new Date(b.zakazanoZa));
+    for (let i = 0; i < lista.length - 1; i++) {
+      const a = new Date(lista[i].zakazanoZa).getTime();
+      const b = new Date(lista[i + 1].zakazanoZa).getTime();
+      if (Math.abs(b - a) < 90 * 60 * 1000) {
+        conflicts.push({ a: lista[i], b: lista[i + 1] });
+      }
+    }
+  }
+  return conflicts;
+}
+
+async function zakaziNalogNa(nalogId, datum) {
+  const body = { zakazanoZa: datum.toISOString() };
+  const az = await api(`/nalozi/${nalogId}`, { method: "PATCH", body: JSON.stringify(body) });
+  const i = nalozi.findIndex((n) => n.id === nalogId);
+  if (i >= 0) nalozi[i] = { ...nalozi[i], ...az };
+  showToast(`Zakazano: ${datum.toLocaleString("sr-RS")}`);
+  renderKalendar();
+}
+
+function kalendarOpseg() {
+  const a = kalendarStanje.anchor;
+  if (kalendarStanje.view === "mesec") {
+    const first = startOfMonth(a);
+    const gridStart = startOfWeek(first);
+    const last = endOfMonth(a);
+    const gridEnd = new Date(startOfWeek(last));
+    gridEnd.setDate(gridEnd.getDate() + 6);
+    gridEnd.setHours(23, 59, 59, 999);
+    return { od: gridStart, doD: gridEnd, naslov: a.toLocaleDateString("sr-RS", { month: "long", year: "numeric" }) };
+  }
+  if (kalendarStanje.view === "nedelja") {
+    const od = startOfWeek(a);
+    const doD = new Date(od);
+    doD.setDate(doD.getDate() + 6);
+    doD.setHours(23, 59, 59, 999);
+    return {
+      od,
+      doD,
+      naslov: `${od.toLocaleDateString("sr-RS", { day: "numeric", month: "short" })} – ${doD.toLocaleDateString("sr-RS", { day: "numeric", month: "short", year: "numeric" })}`,
+    };
+  }
+  const od = new Date(a);
+  od.setHours(0, 0, 0, 0);
+  const doD = new Date(od);
+  doD.setDate(doD.getDate() + 21);
+  doD.setHours(23, 59, 59, 999);
+  return { od, doD, naslov: "Agenda (3 nedelje)" };
+}
+
+async function renderKalendar() {
+  const content = document.getElementById("content");
+  content.innerHTML = `<p class="muted">Učitavanje kalendara…</p>`;
+  const { od, doD, naslov } = kalendarOpseg();
+  const tehOpts = `<option value="">Svi tehničari</option>` +
+    korisnici.filter((k) => k.aktivan && k.uloga !== "klijent").map((k) =>
+      `<option value="${k.id}" ${kalendarStanje.tehnicarId === k.id ? "selected" : ""}>${esc(k.ime)} ${esc(k.prezime)}</option>`
+    ).join("");
+
+  try {
+    const qs = new URLSearchParams({
+      od: od.toISOString(),
+      do: doD.toISOString(),
+      nezakazani: "1",
+    });
+    if (kalendarStanje.tehnicarId) qs.set("tehnicarId", kalendarStanje.tehnicarId);
+    const data = await api(`/podsetnici/kalendar?${qs}`);
+    const lista = Array.isArray(data) ? data : (data.nalozi || []);
+    const nezakazani = Array.isArray(data) ? [] : (data.nezakazani || []);
+    const conflicts = nadjiKonflikte(lista);
+    const danas = lista.filter((n) => sameDay(new Date(n.zakazanoZa), new Date())).length;
+    const byDay = {};
+    for (const n of lista) {
+      const k = dayKey(new Date(n.zakazanoZa));
+      (byDay[k] ||= []).push(n);
+    }
+
+    let bodyHtml = "";
+    if (kalendarStanje.view === "mesec") bodyHtml = htmlKalendarMesec(byDay, od);
+    else if (kalendarStanje.view === "nedelja") bodyHtml = htmlKalendarNedelja(byDay, od);
+    else bodyHtml = htmlKalendarAgenda(byDay);
+
+    const sel = kalendarStanje.selectedDay ? new Date(kalendarStanje.selectedDay) : null;
+    const selKey = sel ? dayKey(sel) : null;
+    const danEvents = selKey ? (byDay[selKey] || []) : [];
+
+    content.innerHTML = `
+      <div class="cal-toolbar">
+        <button class="btn btn-sm" id="cal-prev">‹</button>
+        <button class="btn btn-sm" id="cal-today">Danas</button>
+        <button class="btn btn-sm" id="cal-next">›</button>
+        <strong style="margin-left:4px;">${esc(naslov)}</strong>
+        <div class="spacer"></div>
+        <select id="cal-teh" style="max-width:180px;padding:7px 10px;border:1px solid var(--line-strong);border-radius:6px;font-size:12px;">${tehOpts}</select>
+        <div class="cal-views">
+          <button type="button" data-cal-view="mesec" class="${kalendarStanje.view === "mesec" ? "active" : ""}">Mesec</button>
+          <button type="button" data-cal-view="nedelja" class="${kalendarStanje.view === "nedelja" ? "active" : ""}">Nedelja</button>
+          <button type="button" data-cal-view="agenda" class="${kalendarStanje.view === "agenda" ? "active" : ""}">Agenda</button>
+        </div>
+      </div>
+      <div class="stats-row" style="margin-bottom:12px;">
+        <div class="stat-card"><div class="label">U prikazu</div><div class="value">${lista.length}</div></div>
+        <div class="stat-card"><div class="label">Danas</div><div class="value">${danas}</div></div>
+        <div class="stat-card"><div class="label">Nezakazano</div><div class="value">${nezakazani.length}</div></div>
+        <div class="stat-card danger"><div class="label">Preklapanja</div><div class="value">${conflicts.length}</div></div>
+      </div>
+      ${conflicts.length ? `<div class="cal-conflict">Upozorenje: ${conflicts.length} mogućih preklapanja (±90 min) za istog tehničara.</div>` : ""}
+      <div class="cal-layout">
+        <div id="cal-main">${bodyHtml}</div>
+        <aside class="cal-side">
+          <h4>${sel ? esc(sel.toLocaleDateString("sr-RS", { weekday: "long", day: "numeric", month: "long" })) : "Nezakazani nalozi"}</h4>
+          ${sel ? `
+            <button class="btn btn-sm btn-primary" id="cal-novi-dan" style="width:100%;margin-bottom:10px;">+ Nalog za ovaj dan</button>
+            ${danEvents.length ? danEvents.map((n) => `
+              <div class="cal-item" data-id="${n.id}" style="border-top:1px solid var(--line);padding:8px 0;cursor:pointer;">
+                <div class="mono">${esc(n.brojNaloga)} · ${new Date(n.zakazanoZa).toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" })}</div>
+                <div>${esc(n.naslov)}</div>
+                <div class="muted">${esc(n.klijent?.nazivIliIme || "")}${n.dodeljeniTehnicar ? ` · ${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}` : ""}</div>
+              </div>`).join("") : `<p class="muted">Nema termina ovog dana. Prevuci nalog sa liste ispod.</p>`}
+            <div class="section-title">Nezakazano</div>
+          ` : `<p class="muted" style="margin-top:0;">Prevuci nalog na dan u kalendaru.</p>`}
+          <div id="cal-unsched-list">
+            ${nezakazani.length ? nezakazani.map((n) => `
+              <div class="cal-unsched" draggable="true" data-id="${n.id}">
+                <div class="mono">${esc(n.brojNaloga)}</div>
+                <div>${esc(n.naslov)}</div>
+                <div class="muted">${esc(n.klijent?.nazivIliIme || "")}</div>
+              </div>`).join("") : `<p class="muted">Nema nezakazanih aktivnih naloga.</p>`}
+          </div>
+        </aside>
+      </div>`;
+
+    document.getElementById("cal-prev").onclick = () => {
+      const d = new Date(kalendarStanje.anchor);
+      if (kalendarStanje.view === "mesec") d.setMonth(d.getMonth() - 1);
+      else d.setDate(d.getDate() - (kalendarStanje.view === "nedelja" ? 7 : 21));
+      kalendarStanje.anchor = d;
+      renderKalendar();
+    };
+    document.getElementById("cal-next").onclick = () => {
+      const d = new Date(kalendarStanje.anchor);
+      if (kalendarStanje.view === "mesec") d.setMonth(d.getMonth() + 1);
+      else d.setDate(d.getDate() + (kalendarStanje.view === "nedelja" ? 7 : 21));
+      kalendarStanje.anchor = d;
+      renderKalendar();
+    };
+    document.getElementById("cal-today").onclick = () => {
+      kalendarStanje.anchor = new Date();
+      kalendarStanje.selectedDay = dayKey(new Date());
+      renderKalendar();
+    };
+    document.getElementById("cal-teh").onchange = (e) => {
+      kalendarStanje.tehnicarId = e.target.value;
+      renderKalendar();
+    };
+    content.querySelectorAll("[data-cal-view]").forEach((b) => {
+      b.onclick = () => {
+        kalendarStanje.view = b.dataset.calView;
+        renderKalendar();
+      };
+    });
+    content.querySelectorAll("[data-cal-day]").forEach((cell) => {
+      cell.addEventListener("click", (e) => {
+        if (e.target.closest("[data-id]")) return;
+        kalendarStanje.selectedDay = cell.dataset.calDay;
+        renderKalendar();
+      });
+      cell.addEventListener("dragover", (e) => { e.preventDefault(); cell.classList.add("drop-over"); });
+      cell.addEventListener("dragleave", () => cell.classList.remove("drop-over"));
+      cell.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        cell.classList.remove("drop-over");
+        const id = e.dataTransfer.getData("text/plain");
+        if (!id) return;
+        const [y, m, d] = cell.dataset.calDay.split("-").map(Number);
+        const when = new Date(y, m - 1, d, 9, 0, 0, 0);
+        try { await zakaziNalogNa(id, when); }
+        catch (err) { showToast(err.message); }
+      });
+    });
+    content.querySelectorAll(".cal-week .slot").forEach((slot) => {
+      slot.addEventListener("dragover", (e) => { e.preventDefault(); slot.classList.add("drop-over"); });
+      slot.addEventListener("dragleave", () => slot.classList.remove("drop-over"));
+      slot.addEventListener("drop", async (e) => {
+        e.preventDefault();
+        slot.classList.remove("drop-over");
+        const id = e.dataTransfer.getData("text/plain");
+        if (!id) return;
+        try { await zakaziNalogNa(id, new Date(slot.dataset.slotIso)); }
+        catch (err) { showToast(err.message); }
+      });
+      slot.addEventListener("click", () => {
+        kalendarStanje.selectedDay = dayKey(new Date(slot.dataset.slotIso));
+      });
+    });
+    content.querySelectorAll(".cal-unsched").forEach((el) => {
+      el.addEventListener("dragstart", (e) => {
+        e.dataTransfer.setData("text/plain", el.dataset.id);
+      });
+    });
+    content.querySelectorAll("[data-id]").forEach((el) => {
+      if (el.classList.contains("cal-unsched")) return;
+      el.addEventListener("click", (e) => {
+        e.stopPropagation();
+        otvoriDetaljNaloga(el.dataset.id);
+      });
+    });
+    const btnDan = document.getElementById("cal-novi-dan");
+    if (btnDan) {
+      btnDan.onclick = () => {
+        otvoriModalNalog();
+        const d = new Date(kalendarStanje.selectedDay + "T09:00:00");
+        document.getElementById("f-zakazano").value = uDatetimeLocal(d);
+      };
+    }
+  } catch (e) {
+    content.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+  }
+}
+
+function htmlKalendarMesec(byDay, gridStart) {
+  const today = new Date();
+  const month = kalendarStanje.anchor.getMonth();
+  const dow = ["Pon", "Uto", "Sre", "Čet", "Pet", "Sub", "Ned"].map((d) => `<div class="cal-dow">${d}</div>`).join("");
+  let cells = "";
+  const cursor = new Date(gridStart);
+  for (let i = 0; i < 42; i++) {
+    const key = dayKey(cursor);
+    const items = byDay[key] || [];
+    const other = cursor.getMonth() !== month ? "other" : "";
+    const tod = sameDay(cursor, today) ? "today" : "";
+    const sel = kalendarStanje.selectedDay === key ? "selected" : "";
+    const shown = items.slice(0, 3);
+    const more = items.length - shown.length;
+    cells += `<div class="cal-cell ${other} ${tod} ${sel}" data-cal-day="${key}">
+      <div class="dn">${cursor.getDate()}</div>
+      ${shown.map((n) => `<div class="cal-chip ${calChipClass(n)}" data-id="${n.id}" title="${esc(n.naslov)}">${esc(new Date(n.zakazanoZa).toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" }))} ${esc(n.naslov)}</div>`).join("")}
+      ${more > 0 ? `<div class="cal-more">+${more} još</div>` : ""}
+    </div>`;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return `<div class="cal-month">${dow}${cells}</div>`;
+}
+
+function htmlKalendarNedelja(byDay, weekStart) {
+  const hours = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+  let html = `<div class="cal-week"><div></div>${days.map((d) =>
+    `<div class="cal-dow">${d.toLocaleDateString("sr-RS", { weekday: "short", day: "numeric" })}</div>`
+  ).join("")}`;
+  for (const h of hours) {
+    html += `<div class="hour">${String(h).padStart(2, "0")}:00</div>`;
+    for (const d of days) {
+      const key = dayKey(d);
+      const iso = new Date(d.getFullYear(), d.getMonth(), d.getDate(), h, 0, 0, 0).toISOString();
+      const items = (byDay[key] || []).filter((n) => new Date(n.zakazanoZa).getHours() === h);
+      html += `<div class="slot" data-slot-iso="${iso}" data-cal-day="${key}">
+        ${items.map((n) => `<div class="cal-chip ${calChipClass(n)}" data-id="${n.id}">${esc(n.naslov)}</div>`).join("")}
+      </div>`;
+    }
+  }
+  html += `</div>`;
+  return html;
+}
+
+function htmlKalendarAgenda(byDay) {
+  const keys = Object.keys(byDay).sort();
+  if (!keys.length) return `<div class="empty">Nema zakazanih naloga u ovom periodu.</div>`;
+  return keys.map((key) => {
+    const d = new Date(key + "T12:00:00");
+    const items = byDay[key];
+    return `<div class="cal-day" data-cal-day="${key}">
+      <h4>${esc(d.toLocaleDateString("sr-RS", { weekday: "long", day: "numeric", month: "long" }))} · ${items.length}</h4>
+      ${items.map((n) => `
+        <div class="cal-item" data-id="${n.id}">
+          <strong class="mono">${esc(n.brojNaloga)}</strong>
+          <span class="badge ${n.prioritet === "kritican" ? "kritican" : n.prioritet === "hitno" ? "hitno" : ""}">${esc(n.prioritet || "")}</span>
+          ${esc(n.naslov)}
+          <div class="muted">${new Date(n.zakazanoZa).toLocaleTimeString("sr-RS", { hour: "2-digit", minute: "2-digit" })}
+            · ${esc(n.klijent?.nazivIliIme || "")}
+            · ${esc(statusLabel(n.status))}
+            ${n.dodeljeniTehnicar ? ` · ${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}` : " · bez tehničara"}
+            ${n.lokacijaTip === "teren" ? " · teren" : " · radionica"}
+          </div>
+        </div>`).join("")}
+    </div>`;
+  }).join("");
 }
 
 function attachDrag() {

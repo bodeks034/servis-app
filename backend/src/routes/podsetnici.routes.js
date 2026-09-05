@@ -15,7 +15,7 @@ router.get("/", asyncHandler(async (req, res) => {
   res.json(data);
 }));
 
-// GET /api/podsetnici/kalendar?od=&do=
+// GET /api/podsetnici/kalendar?od=&do=&tehnicarId=&status=
 router.get("/kalendar", asyncHandler(async (req, res) => {
   const od = req.query.od ? new Date(req.query.od) : startOfDay(new Date());
   const doDatuma = req.query.do ? new Date(req.query.do) : endOfDay(addDays(new Date(), 14));
@@ -25,19 +25,46 @@ router.get("/kalendar", asyncHandler(async (req, res) => {
     zakazanoZa: { gte: od, lte: doDatuma },
     status: { not: "otkazano" },
   };
-  if (req.user.uloga === "tehnicar") where.dodeljeniTehnicarId = req.user.id;
+  if (req.user.uloga === "tehnicar") {
+    where.dodeljeniTehnicarId = req.user.id;
+  } else if (req.query.tehnicarId) {
+    where.dodeljeniTehnicarId = String(req.query.tehnicarId);
+  }
+  if (req.query.status && req.query.status !== "sve") {
+    where.status = String(req.query.status);
+  }
 
-  const nalozi = await prisma.radniNalog.findMany({
-    where,
-    include: {
-      klijent: { select: { nazivIliIme: true } },
-      oprema: { select: { naziv: true } },
-      kategorija: { select: { naziv: true } },
-      dodeljeniTehnicar: { select: { ime: true, prezime: true } },
-    },
-    orderBy: { zakazanoZa: "asc" },
-  });
-  res.json(nalozi);
+  const [nalozi, nezakazani] = await Promise.all([
+    prisma.radniNalog.findMany({
+      where,
+      include: {
+        klijent: { select: { nazivIliIme: true } },
+        oprema: { select: { naziv: true } },
+        kategorija: { select: { id: true, naziv: true } },
+        tipUsluge: { select: { naziv: true } },
+        dodeljeniTehnicar: { select: { id: true, ime: true, prezime: true } },
+      },
+      orderBy: { zakazanoZa: "asc" },
+    }),
+    req.query.nezakazani === "1" && req.user.uloga !== "tehnicar"
+      ? prisma.radniNalog.findMany({
+          where: {
+            firmaId: req.user.firmaId,
+            zakazanoZa: null,
+            status: { notIn: ["zavrseno", "otkazano"] },
+          },
+          include: {
+            klijent: { select: { nazivIliIme: true } },
+            kategorija: { select: { naziv: true } },
+            dodeljeniTehnicar: { select: { id: true, ime: true, prezime: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 40,
+        })
+      : Promise.resolve([]),
+  ]);
+
+  res.json({ nalozi, nezakazani });
 }));
 
 function mailerSpreman() {
