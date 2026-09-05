@@ -1,5 +1,13 @@
 {
+  "services": {
+    "api": {
+      "root": ".",
+      "framework": "express",
+      "installCommand": "npm install",
+      "buildCommand": "npx prisma generate"
+    }
+  },
   "rewrites": [
-    { "source": "/(.*)", "destination": "/api" }
+    { "source": "/(.*)", "destination": { "service": "api" } }
   ]
 }

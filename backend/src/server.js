@@ -73,8 +73,14 @@ app.use((err, req, res, next) => {
   }
   const status = err.status || 500;
   if (status >= 500) console.error(err);
+  const poolBusy =
+    /EMAXCONNSESSION|max clients|Too many database/i.test(String(err && err.message || ""));
   res.status(status).json({
-    greska: status >= 500 ? "Došlo je do greške na serveru." : err.message,
+    greska: poolBusy
+      ? "Baza je trenutno zauzeta (previše konekcija). Pokušajte ponovo za nekoliko sekundi."
+      : status >= 500
+        ? "Došlo je do greške na serveru."
+        : err.message,
   });
 });
 
