@@ -269,6 +269,7 @@
       <div class="field"><label>Tehničar</label><select id="f-tehnicar"></select></div>
       <div class="field"><label>Zakazano za</label><input id="f-zakazano" type="datetime-local"></div>
     </div>
+    <div class="field"><label>SLA rok (opciono — inače po prioritetu: krit. 4h / hitno 24h / normalan 72h)</label><input id="f-sla" type="datetime-local"></div>
     <div class="field"><label>Adresa intervencije</label><input id="f-adresa" placeholder="Ako je posao na terenu"></div>
     <div class="field"><label>Opis / napomena</label><textarea id="f-opis"></textarea></div>
     <div class="error-msg" id="nalog-error"></div>
@@ -402,6 +403,26 @@
     <div class="field"><label>Lozinka</label><input id="fu-lozinka" type="password"></div>
     <div class="error-msg" id="korisnik-error"></div>
     <div class="modal-actions"><button class="btn" id="cancel-korisnik">Otkaži</button><button class="btn btn-primary" id="save-korisnik" style="width:auto;">Dodaj</button></div>
+  </div>
+</div>
+
+<!-- Modal: istorija opreme -->
+<div class="overlay" id="overlay-istorija-opreme">
+  <div class="modal wide" id="istorija-opreme-body"></div>
+</div>
+
+<!-- Modal: transfer magacin -->
+<div class="overlay" id="overlay-transfer">
+  <div class="modal">
+    <h3>Prenos delova (magacin)</h3>
+    <div class="field"><label>Deo</label><select id="ft-deo"></select></div>
+    <div class="field-row">
+      <div class="field"><label>Iz magacina</label><select id="ft-iz"></select></div>
+      <div class="field"><label>U magacin</label><select id="ft-u"></select></div>
+    </div>
+    <div class="field"><label>Količina</label><input id="ft-kolicina" type="number" min="1" value="1"></div>
+    <div class="error-msg" id="transfer-error"></div>
+    <div class="modal-actions"><button class="btn" id="cancel-transfer">Otkaži</button><button class="btn btn-primary" id="save-transfer" style="width:auto;">Prenesi</button></div>
   </div>
 </div>
 

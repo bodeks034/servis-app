@@ -5,6 +5,8 @@ const { requireAuth, requireRole } = require("../middleware/auth");
 const asyncHandler = require("../lib/asyncHandler");
 const { HttpError } = require("../lib/errors");
 
+const { mobilniMagacin } = require("../lib/magacin");
+
 const router = express.Router();
 router.use(requireAuth);
 
@@ -64,6 +66,12 @@ router.post("/", requireRole("admin", "dispecer"), asyncHandler(async (req, res)
     },
     select: publicSelect,
   });
+
+  if (novaUloga === "tehnicar") {
+    await prisma.$transaction((tx) =>
+      mobilniMagacin(tx, req.user.firmaId, korisnik.id, `${korisnik.ime} ${korisnik.prezime}`)
+    );
+  }
 
   res.status(201).json(korisnik);
 }));

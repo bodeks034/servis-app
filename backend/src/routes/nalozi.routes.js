@@ -5,9 +5,10 @@ const asyncHandler = require("../lib/asyncHandler");
 const { HttpError } = require("../lib/errors");
 const { containsText } = require("../lib/search");
 const { sledeciBrojNaloga } = require("../lib/brojevi");
-const { centralniMagacin } = require("../lib/magacin");
+const { centralniMagacin, magacinZaUtrošak } = require("../lib/magacin");
 const { uploadPrilog, obrisiFajlAkoJeUStorage } = require("../lib/storage");
 const { nalogHtml } = require("../lib/pdfHtml");
+const { stavkeZaTipUsluge, izracunajSlaRok } = require("../lib/checklist");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -22,6 +23,16 @@ const nalogInclude = {
   kategorija: true,
   tipUsluge: true,
   dodeljeniTehnicar: tehnicarSelect,
+};
+
+const detaljInclude = {
+  ...nalogInclude,
+  kreirao: tehnicarSelect,
+  istorijaStatusa: { orderBy: { promenjenoAt: "asc" } },
+  prilozi: { orderBy: { uploadedAt: "desc" } },
+  utroseniDelovi: { include: { deo: true } },
+  checklist: { orderBy: { redosled: "asc" } },
+  racun: { select: { id: true, brojRacuna: true, status: true, ukupanIznos: true } },
 };
 
 const STATUSI = ["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"];
@@ -66,7 +77,7 @@ router.post("/", asyncHandler(async (req, res) => {
   const {
     klijentId, opremaId, kategorijaId, tipUslugeId,
     naslov, opis, prioritet, lokacijaTip, adresaIntervencije,
-    dodeljeniTehnicarId, zakazanoZa,
+    dodeljeniTehnicarId, zakazanoZa, slaRok,
   } = req.body;
 
   if (!klijentId || !opremaId || !kategorijaId || !tipUslugeId || !naslov) {
@@ -96,6 +107,11 @@ router.post("/", asyncHandler(async (req, res) => {
     if (!tehnicar) throw new HttpError(400, "Tehničar nije pronađen.");
   }
 
+  const prioritetVal = prioritet || "normalan";
+  const sla =
+    slaRok ? new Date(slaRok) : izracunajSlaRok(prioritetVal);
+  const checklistStavke = stavkeZaTipUsluge(tipUsluge.naziv);
+
   const nalog = await prisma.$transaction(async (tx) => {
     const brojNaloga = await sledeciBrojNaloga(tx, firmaId);
     return tx.radniNalog.create({
@@ -108,18 +124,22 @@ router.post("/", asyncHandler(async (req, res) => {
         tipUslugeId,
         naslov: String(naslov).trim(),
         opis: opis ? String(opis).trim() : null,
-        prioritet: prioritet || "normalan",
+        prioritet: prioritetVal,
         lokacijaTip: lokacijaTip || "radionica",
         adresaIntervencije: adresaIntervencije ? String(adresaIntervencije).trim() : null,
         dodeljeniTehnicarId: tehnicarId,
         kreiraoId: req.user.id,
         zakazanoZa: zakazanoZa ? new Date(zakazanoZa) : null,
+        slaRok: Number.isNaN(sla.getTime()) ? izracunajSlaRok(prioritetVal) : sla,
         status: "novo",
         istorijaStatusa: {
           create: { noviStatus: "novo", promenioId: req.user.id },
         },
+        checklist: {
+          create: checklistStavke,
+        },
       },
-      include: nalogInclude,
+      include: { ...nalogInclude, checklist: { orderBy: { redosled: "asc" } } },
     });
   });
 
@@ -138,19 +158,24 @@ router.patch("/:id/status", asyncHandler(async (req, res) => {
     throw new HttpError(403, "Ovaj nalog nije dodeljen vama.");
   }
 
-  const nalog = await prisma.radniNalog.update({
-    where: { id: postojeci.id },
-    data: {
-      status: noviStatus,
-      zavrsenoAt: noviStatus === "zavrseno" ? new Date() : postojeci.zavrsenoAt,
-      istorijaStatusa: {
-        create: {
-          stariStatus: postojeci.status,
-          noviStatus,
-          promenioId: req.user.id,
-        },
+  const data = {
+    status: noviStatus,
+    zavrsenoAt: noviStatus === "zavrseno" ? new Date() : postojeci.zavrsenoAt,
+    istorijaStatusa: {
+      create: {
+        stariStatus: postojeci.status,
+        noviStatus,
+        promenioId: req.user.id,
       },
     },
+  };
+  if ((noviStatus === "u_toku" || noviStatus === "ceka_delove") && !postojeci.zapocetoAt) {
+    data.zapocetoAt = new Date();
+  }
+
+  const nalog = await prisma.radniNalog.update({
+    where: { id: postojeci.id },
+    data,
     include: nalogInclude,
   });
 
@@ -159,7 +184,7 @@ router.patch("/:id/status", asyncHandler(async (req, res) => {
 
 // POST /api/nalozi/:id/delovi — utrošak dela sa skidanjem zalihe
 router.post("/:id/delovi", asyncHandler(async (req, res) => {
-  const { deoId, kolicina } = req.body;
+  const { deoId, kolicina, magacinId } = req.body;
   const kol = parseInt(kolicina, 10);
   if (!deoId || !Number.isFinite(kol) || kol < 1) {
     throw new HttpError(400, "Deo i količina (najmanje 1) su obavezni.");
@@ -180,12 +205,22 @@ router.post("/:id/delovi", asyncHandler(async (req, res) => {
     const deo = await tx.deo.findFirst({ where: { id: deoId, firmaId: req.user.firmaId } });
     if (!deo) throw new HttpError(400, "Deo nije pronađen.");
 
-    const magacin = await centralniMagacin(tx, req.user.firmaId);
+    let magacin;
+    try {
+      magacin = await magacinZaUtrošak(tx, {
+        firmaId: req.user.firmaId,
+        magacinId: magacinId || null,
+        tehnicarId: nalog.dodeljeniTehnicarId || req.user.id,
+      });
+    } catch (e) {
+      throw new HttpError(e.status || 400, e.message);
+    }
+
     const stanje = await tx.stanjeZaliha.findUnique({
       where: { deoId_magacinId: { deoId, magacinId: magacin.id } },
     });
     if (!stanje || stanje.kolicina < kol) {
-      throw new HttpError(400, "Nema dovoljno na stanju. Prvo unesite prijem u magacin.");
+      throw new HttpError(400, `Nema dovoljno na magacinu „${magacin.naziv}”.`);
     }
 
     await tx.stanjeZaliha.update({
@@ -197,6 +232,7 @@ router.post("/:id/delovi", asyncHandler(async (req, res) => {
       data: {
         nalogId: nalog.id,
         deoId,
+        magacinId: magacin.id,
         kolicina: kol,
         cenaPoKomadu: deo.prodajnaCena || 0,
       },
@@ -223,11 +259,15 @@ router.delete("/:id/delovi/:utrosakId", asyncHandler(async (req, res) => {
     });
     if (!utrosak) throw new HttpError(404, "Stavka nije pronađena.");
 
-    const magacin = await centralniMagacin(tx, req.user.firmaId);
+    let magacinId = utrosak.magacinId;
+    if (!magacinId) {
+      const m = await centralniMagacin(tx, req.user.firmaId);
+      magacinId = m.id;
+    }
     await tx.stanjeZaliha.upsert({
-      where: { deoId_magacinId: { deoId: utrosak.deoId, magacinId: magacin.id } },
+      where: { deoId_magacinId: { deoId: utrosak.deoId, magacinId } },
       update: { kolicina: { increment: utrosak.kolicina } },
-      create: { deoId: utrosak.deoId, magacinId: magacin.id, kolicina: utrosak.kolicina },
+      create: { deoId: utrosak.deoId, magacinId, kolicina: utrosak.kolicina },
     });
     await tx.nalogUtroseniDeo.delete({ where: { id: utrosak.id } });
   });
@@ -244,7 +284,7 @@ router.patch("/:id", asyncHandler(async (req, res) => {
 
   const {
     naslov, opis, prioritet, lokacijaTip, adresaIntervencije,
-    dodeljeniTehnicarId, zakazanoZa,
+    dodeljeniTehnicarId, zakazanoZa, slaRok,
   } = req.body;
 
   const data = {};
@@ -257,6 +297,9 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   }
   if (zakazanoZa !== undefined) {
     data.zakazanoZa = zakazanoZa ? new Date(zakazanoZa) : null;
+  }
+  if (slaRok !== undefined) {
+    data.slaRok = slaRok ? new Date(slaRok) : null;
   }
   if (dodeljeniTehnicarId !== undefined) {
     if (req.user.uloga === "tehnicar") {
@@ -279,6 +322,35 @@ router.patch("/:id", asyncHandler(async (req, res) => {
     include: nalogInclude,
   });
   res.json(nalog);
+}));
+
+// PATCH /api/nalozi/:id/checklist/:stavkaId
+router.patch("/:id/checklist/:stavkaId", asyncHandler(async (req, res) => {
+  const nalog = await prisma.radniNalog.findFirst({
+    where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
+  });
+  if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
+  if (nalog.status === "zavrseno" || nalog.status === "otkazano") {
+    throw new HttpError(400, "Nalog je zatvoren.");
+  }
+
+  const stavka = await prisma.nalogChecklistStavka.findFirst({
+    where: { id: req.params.stavkaId, nalogId: nalog.id },
+  });
+  if (!stavka) throw new HttpError(404, "Stavka nije pronađena.");
+
+  const zavrseno = req.body.zavrseno === true || req.body.zavrseno === false
+    ? req.body.zavrseno
+    : !stavka.zavrseno;
+
+  const azurirana = await prisma.nalogChecklistStavka.update({
+    where: { id: stavka.id },
+    data: {
+      zavrseno,
+      zavrsenoAt: zavrseno ? new Date() : null,
+    },
+  });
+  res.json(azurirana);
 }));
 
 // POST /api/nalozi/:id/prilozi — foto pre/posle ili potpis (data URL)
@@ -364,14 +436,7 @@ router.get("/:id/pdf", asyncHandler(async (req, res) => {
 router.get("/:id", asyncHandler(async (req, res) => {
   const nalog = await prisma.radniNalog.findFirst({
     where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
-    include: {
-      ...nalogInclude,
-      kreirao: tehnicarSelect,
-      istorijaStatusa: { orderBy: { promenjenoAt: "asc" } },
-      prilozi: { orderBy: { uploadedAt: "desc" } },
-      utroseniDelovi: { include: { deo: true } },
-      racun: { select: { id: true, brojRacuna: true, status: true, ukupanIznos: true } },
-    },
+    include: detaljInclude,
   });
   if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
   res.json(nalog);

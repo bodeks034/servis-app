@@ -111,4 +111,53 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   res.json(azurirana);
 }));
 
+// GET /api/oprema/:id/istorija — svi nalozi za jedinicu + MTTR/MTBF
+router.get("/:id/istorija", asyncHandler(async (req, res) => {
+  const oprema = await prisma.oprema.findFirst({
+    where: { id: req.params.id, firmaId: req.user.firmaId },
+    include: { klijent: true, kategorija: true },
+  });
+  if (!oprema) throw new HttpError(404, "Oprema nije pronađena.");
+
+  const nalozi = await prisma.radniNalog.findMany({
+    where: { firmaId: req.user.firmaId, opremaId: oprema.id },
+    include: {
+      tipUsluge: true,
+      dodeljeniTehnicar: { select: { ime: true, prezime: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const zavrseni = nalozi.filter((n) => n.status === "zavrseno" && n.zavrsenoAt);
+  let mttrSati = null;
+  if (zavrseni.length) {
+    const sum = zavrseni.reduce((s, n) => {
+      const start = n.zapocetoAt || n.createdAt;
+      return s + (new Date(n.zavrsenoAt) - new Date(start));
+    }, 0);
+    mttrSati = Math.round((sum / zavrseni.length / 3600000) * 10) / 10;
+  }
+
+  let mtbfDani = null;
+  if (nalozi.length >= 2) {
+    const sorted = [...nalozi].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    let gap = 0;
+    for (let i = 1; i < sorted.length; i++) {
+      gap += new Date(sorted[i].createdAt) - new Date(sorted[i - 1].createdAt);
+    }
+    mtbfDani = Math.round((gap / (sorted.length - 1) / 86400000) * 10) / 10;
+  }
+
+  res.json({
+    oprema,
+    nalozi,
+    metrike: {
+      brojNaloga: nalozi.length,
+      brojZavrsenih: zavrseni.length,
+      mttrSati,
+      mtbfDani,
+    },
+  });
+}));
+
 module.exports = router;

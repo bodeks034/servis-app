@@ -8,3 +8,5 @@ backend/.env
 .DS_Store
 scripts/
 backend/scripts/
+
+.vercel

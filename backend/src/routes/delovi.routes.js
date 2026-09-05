@@ -9,16 +9,28 @@ const router = express.Router();
 router.use(requireAuth);
 
 function saStanjem(deo) {
+  const poMagacinu = (deo.stanjeZaliha || []).map((s) => ({
+    magacinId: s.magacinId,
+    magacinNaziv: s.magacin?.naziv || null,
+    tip: s.magacin?.tip || null,
+    kolicina: s.kolicina,
+  }));
   return {
     ...deo,
-    ukupnoNaStanju: deo.stanjeZaliha.reduce((zbir, s) => zbir + s.kolicina, 0),
+    stanjeZaliha: undefined,
+    poMagacinu,
+    ukupnoNaStanju: poMagacinu.reduce((zbir, s) => zbir + s.kolicina, 0),
   };
 }
 
 router.get("/", asyncHandler(async (req, res) => {
   const delovi = await prisma.deo.findMany({
     where: { firmaId: req.user.firmaId },
-    include: { stanjeZaliha: true },
+    include: {
+      stanjeZaliha: {
+        include: { magacin: { select: { id: true, naziv: true, tip: true } } },
+      },
+    },
     orderBy: { naziv: "asc" },
   });
   res.json(delovi.map(saStanjem));
@@ -40,7 +52,11 @@ router.post("/", asyncHandler(async (req, res) => {
       prodajnaCena: prodajnaCena || null,
       minZaliha: minZaliha || 0,
     },
-    include: { stanjeZaliha: true },
+    include: {
+      stanjeZaliha: {
+        include: { magacin: { select: { id: true, naziv: true, tip: true } } },
+      },
+    },
   });
   res.status(201).json(saStanjem(deo));
 }));
@@ -67,7 +83,11 @@ router.post("/:id/prijem", asyncHandler(async (req, res) => {
 
     return tx.deo.findUnique({
       where: { id: postojeci.id },
-      include: { stanjeZaliha: true },
+      include: {
+        stanjeZaliha: {
+          include: { magacin: { select: { id: true, naziv: true, tip: true } } },
+        },
+      },
     });
   });
 

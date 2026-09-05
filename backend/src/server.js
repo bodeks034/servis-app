@@ -11,6 +11,7 @@ const sifarniciRoutes = require("./routes/sifarnici.routes");
 const racuniRoutes = require("./routes/racuni.routes");
 const korisniciRoutes = require("./routes/korisnici.routes");
 const podsetniciRoutes = require("./routes/podsetnici.routes");
+const magaciniRoutes = require("./routes/magacini.routes");
 
 const app = express();
 
@@ -40,6 +41,7 @@ app.use("/api/sifarnici", sifarniciRoutes);
 app.use("/api/racuni", racuniRoutes);
 app.use("/api/korisnici", korisniciRoutes);
 app.use("/api/podsetnici", podsetniciRoutes);
+app.use("/api/magacini", magaciniRoutes);
 
 // Na Vercel-u putanje ponekad dođu bez /api prefiksa — dupliciraj rute
 app.use("/auth", authRoutes);
@@ -51,6 +53,7 @@ app.use("/sifarnici", sifarniciRoutes);
 app.use("/racuni", racuniRoutes);
 app.use("/korisnici", korisniciRoutes);
 app.use("/podsetnici", podsetniciRoutes);
+app.use("/magacini", magaciniRoutes);
 
 app.use((err, req, res, next) => {
   if (err && err.code === "P2002") {

@@ -58,6 +58,7 @@ model Korisnik {
 
   dodeljeniNalozi RadniNalog[] @relation("DodeljeniTehnicar")
   kreiraniNalozi  RadniNalog[] @relation("KreiraoNalog")
+  mobilniMagacini Magacin[]    @relation("TehnicarMagacin")
 
   @@index([firmaId])
   @@map("korisnici")
@@ -195,6 +196,7 @@ model RadniNalog {
   kreirao             Korisnik     @relation("KreiraoNalog", fields: [kreiraoId], references: [id])
   zakazanoZa          DateTime?    @map("zakazano_za")
   slaRok              DateTime?    @map("sla_rok")
+  zapocetoAt          DateTime?    @map("zapoceto_at")
   zavrsenoAt          DateTime?    @map("zavrseno_at")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
@@ -202,6 +204,7 @@ model RadniNalog {
   istorijaStatusa NalogIstorijaStatusa[]
   prilozi         NalogPrilog[]
   utroseniDelovi  NalogUtroseniDeo[]
+  checklist       NalogChecklistStavka[]
   racun           Racun?
 
   @@unique([firmaId, brojNaloga])
@@ -274,10 +277,12 @@ model Magacin {
   naziv      String
   tip        TipMagacina @default(centralni)
   tehnicarId String?     @map("tehnicar_id")
+  tehnicar   Korisnik?   @relation("TehnicarMagacin", fields: [tehnicarId], references: [id])
 
   stanjeZaliha StanjeZaliha[]
 
   @@index([firmaId])
+  @@index([tehnicarId])
   @@map("magacini")
 }
 
@@ -299,10 +304,24 @@ model NalogUtroseniDeo {
   nalog        RadniNalog @relation(fields: [nalogId], references: [id])
   deoId        String     @map("deo_id")
   deo          Deo        @relation(fields: [deoId], references: [id])
+  magacinId    String?    @map("magacin_id")
   kolicina     Int
   cenaPoKomadu Decimal    @map("cena_po_komadu")
 
   @@map("nalog_utroseni_delovi")
+}
+
+model NalogChecklistStavka {
+  id         String     @id @default(uuid())
+  nalogId    String     @map("nalog_id")
+  nalog      RadniNalog @relation(fields: [nalogId], references: [id], onDelete: Cascade)
+  tekst      String
+  zavrseno   Boolean    @default(false)
+  redosled   Int        @default(0)
+  zavrsenoAt DateTime?  @map("zavrseno_at")
+
+  @@index([nalogId])
+  @@map("nalog_checklist_stavke")
 }
 
 // ---------- Finansije ----------

@@ -8,6 +8,18 @@ const TOKEN_KEY = "servis_token";
 const USER_KEY = "servis_korisnik";
 const API_KEY = "servis_api_base";
 const QUEUE_KEY = "servis_offline_queue";
+const CACHE_KEY = "servis_api_cache_v1";
+
+function procitajKes() {
+  try { return JSON.parse(localStorage.getItem(CACHE_KEY) || "{}"); } catch { return {}; }
+}
+function upisiKes(putanja, data) {
+  try {
+    const kes = procitajKes();
+    kes[putanja] = { data, at: Date.now() };
+    localStorage.setItem(CACHE_KEY, JSON.stringify(kes));
+  } catch (_) { /* quota */ }
+}
 
 function jeZastarelaApiAdresa(url) {
   const u = String(url || "").toLowerCase();
@@ -66,6 +78,7 @@ let nalozi = [];
 let delovi = [];
 let racuni = [];
 let korisnici = [];
+let magacini = [];
 let currentView = "nalozi";
 let categoryFilter = "sve";
 let detaljNalog = null;
@@ -115,6 +128,7 @@ function izDatetimeLocal(val) {
 }
 
 async function api(putanja, opcije = {}) {
+  const method = (opcije.method || "GET").toUpperCase();
   let res;
   try {
     res = await fetch(API_BASE + putanja, {
@@ -126,6 +140,13 @@ async function api(putanja, opcije = {}) {
       },
     });
   } catch (err) {
+    if (method === "GET") {
+      const cached = procitajKes()[putanja];
+      if (cached) {
+        showToast("Offline — prikazujem sačuvane podatke.");
+        return cached.data;
+      }
+    }
     if (jeZastarelaApiAdresa(API_BASE)) {
       throw new Error(
         "Pogrešan API URL (localhost). Upiši: https://backend-nine-pied-44.vercel.app/api"
@@ -141,6 +162,9 @@ async function api(putanja, opcije = {}) {
     throw new Error("Sesija je istekla. Prijavite se ponovo.");
   }
   if (!res.ok) throw new Error(data.greska || "Greška u komunikaciji sa serverom.");
+  if (method === "GET" && putanja.startsWith("/") && !putanja.includes("/pdf")) {
+    upisiKes(putanja, data);
+  }
   return data;
 }
 
@@ -153,7 +177,10 @@ function sacuvajRed() {
 }
 
 function jeMrezniProblem(err) {
-  return err instanceof TypeError;
+  return (
+    err instanceof TypeError ||
+    /Ne mogu da dostignem API|Failed to fetch|NetworkError|offline/i.test(String(err && err.message || ""))
+  );
 }
 
 function azurirajIndikatorReda() {
@@ -321,6 +348,7 @@ async function ucitajSifarnike() {
 async function ucitajSve() {
   const zahtevi = [api("/klijenti"), api("/oprema"), api("/nalozi"), api("/delovi"), api("/racuni")];
   zahtevi.push(api("/korisnici").catch(() => []));
+  zahtevi.push(api("/magacini").catch(() => []));
   const rez = await Promise.all(zahtevi);
   klijenti = rez[0];
   oprema = rez[1];
@@ -328,6 +356,7 @@ async function ucitajSve() {
   delovi = rez[3];
   racuni = rez[4];
   korisnici = rez[5] || [];
+  magacini = rez[6] || [];
 }
 
 function render() {
@@ -482,19 +511,29 @@ function render() {
       (o.serijskiBroj || "").toLowerCase().includes(q) || (o.vin || "").toLowerCase().includes(q) ||
       (o.registracija || "").toLowerCase().includes(q)
     );
-    let html = `<table><thead><tr><th>Naziv</th><th>Kategorija</th><th>Klijent</th><th>Identifikacija</th><th>Garancija</th><th>Status</th></tr></thead><tbody>`;
-    if (filtered.length === 0) html += `<tr><td colspan="6" class="empty">Nema unetih jedinica</td></tr>`;
+    let html = `<table><thead><tr><th>Naziv</th><th>Kategorija</th><th>Klijent</th><th>Identifikacija</th><th>Garancija</th><th>Status</th><th></th></tr></thead><tbody>`;
+    if (filtered.length === 0) html += `<tr><td colspan="7" class="empty">Nema unetih jedinica</td></tr>`;
     for (const o of filtered) {
       const gar = o.garancijaDo ? new Date(o.garancijaDo).toLocaleDateString("sr-RS") : "—";
       const idn = [o.vin && `VIN ${o.vin}`, o.registracija, o.serijskiBroj && `S/N ${o.serijskiBroj}`, o.kilometraza != null && `${o.kilometraza} km`, o.satnice != null && `${o.satnice} h`].filter(Boolean).join(" · ");
       html += `<tr class="clickable" data-id="${o.id}"><td>${esc(o.naziv)}</td><td><span class="badge ${catBadgeClass[o.kategorijaId] || "c1"}">${esc(o.kategorija?.naziv || "")}</span></td>
         <td>${esc(o.klijent?.nazivIliIme || "—")}</td><td class="mono">${esc(idn || (o.proizvodjac || "") + " " + (o.model || ""))}</td>
-        <td class="mono">${gar}</td><td>${esc(o.status)}</td></tr>`;
+        <td class="mono">${gar}</td><td>${esc(o.status)}</td>
+        <td><button class="btn btn-sm" data-istorija="${o.id}">Istorija</button></td></tr>`;
     }
     html += `</tbody></table>`;
     content.innerHTML = html;
     content.querySelectorAll("tr.clickable").forEach((row) => {
-      row.addEventListener("click", () => otvoriModalOprema(oprema.find((o) => o.id === row.dataset.id)));
+      row.addEventListener("click", (e) => {
+        if (e.target.closest("[data-istorija]")) return;
+        otvoriModalOprema(oprema.find((o) => o.id === row.dataset.id));
+      });
+    });
+    content.querySelectorAll("[data-istorija]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        otvoriIstorijuOpreme(b.dataset.istorija);
+      });
     });
   }
 
@@ -529,7 +568,21 @@ function render() {
     const filtered = delovi.filter((d) =>
       !q || d.naziv.toLowerCase().includes(q) || d.sifra.toLowerCase().includes(q)
     );
-    let html = `<table><thead><tr><th>Šifra</th><th>Naziv</th><th>Na stanju</th><th>Min. zaliha</th><th></th></tr></thead><tbody>`;
+    let html = `<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px;">
+      <button class="btn btn-sm" id="btn-transfer">Prenos centralni ↔ vozilo</button>
+      <button class="btn btn-sm" id="btn-osiguraj-vozila">Kreiraj magacine vozila</button>
+    </div>`;
+    if (magacini.length) {
+      html += `<div class="section-title">Magacini</div><div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px;margin-bottom:16px;">`;
+      for (const m of magacini) {
+        const sum = (m.stavke || []).reduce((s, x) => s + x.kolicina, 0);
+        html += `<div class="stat-card"><div class="label">${esc(m.naziv)} · ${m.tip}</div>
+          <div class="value" style="font-size:18px;">${sum} kom</div>
+          <div class="muted" style="margin-top:6px;">${(m.stavke || []).slice(0, 4).map((s) => esc(s.sifra) + ":" + s.kolicina).join(" · ") || "prazno"}</div></div>`;
+      }
+      html += `</div>`;
+    }
+    html += `<table><thead><tr><th>Šifra</th><th>Naziv</th><th>Na stanju</th><th>Min. zaliha</th><th></th></tr></thead><tbody>`;
     if (filtered.length === 0) html += `<tr><td colspan="5" class="empty">Nema unetih delova</td></tr>`;
     for (const d of filtered) {
       const low = d.ukupnoNaStanju < d.minZaliha;
@@ -543,6 +596,22 @@ function render() {
     content.querySelectorAll("[data-prijem]").forEach((b) => {
       b.addEventListener("click", () => otvoriPrijem(b.dataset.prijem));
     });
+    const bt = document.getElementById("btn-transfer");
+    if (bt) bt.onclick = otvoriTransfer;
+    const bv = document.getElementById("btn-osiguraj-vozila");
+    if (bv) {
+      bv.onclick = async () => {
+        try {
+          const teh = korisnici.filter((k) => k.uloga === "tehnicar" && k.aktivan);
+          for (const t of teh) {
+            await api("/magacini/mobilni", { method: "POST", body: JSON.stringify({ tehnicarId: t.id }) });
+          }
+          magacini = await api("/magacini");
+          showToast("Magacini vozila su spremni.");
+          render();
+        } catch (e) { showToast(e.message); }
+      };
+    }
   }
 
   else if (currentView === "racuni") {
@@ -599,6 +668,8 @@ function render() {
     btnNew.onclick = null;
 
     const report = izracunajIzvestaj();
+    const teren = nalozi.filter((n) => n.lokacijaTip === "teren").length;
+    const radionica = nalozi.filter((n) => n.lokacijaTip === "radionica").length;
     let catRows = "";
     report.poKategoriji.forEach((r) => {
       catRows += `<tr><td>${esc(r.naziv)}</td><td class="mono">${r.ukupno}</td><td class="mono">${r.zavrseno}</td><td class="mono">${r.aktivni}</td></tr>`;
@@ -632,6 +703,12 @@ function render() {
           <div class="stat-card success"><div class="label">Završeno</div><div class="value">${report.done}</div></div>
           <div class="stat-card danger"><div class="label">Kritični aktivni</div><div class="value">${report.critical}</div></div>
           <div class="stat-card"><div class="label">Neplaćeno (RSD)</div><div class="value" style="font-size:18px;">${report.neplaceni.toFixed(0)}</div></div>
+        </div>
+        <div class="stats-row">
+          <div class="stat-card"><div class="label">MTTR (prosek h)</div><div class="value" style="font-size:20px;">${report.mttrSati ?? "—"}</div></div>
+          <div class="stat-card"><div class="label">MTBF (prosek dana)</div><div class="value" style="font-size:20px;">${report.mtbfDani ?? "—"}</div></div>
+          <div class="stat-card"><div class="label">Teren</div><div class="value">${teren}</div></div>
+          <div class="stat-card"><div class="label">Radionica</div><div class="value">${radionica}</div></div>
         </div>
         <div class="section-title">Nalozi po statusu</div>
         <table><thead><tr><th>Status</th><th>Broj</th></tr></thead><tbody>${statusRows}</tbody></table>
@@ -879,6 +956,8 @@ function otvoriModalNalog() {
   document.getElementById("f-opis").value = "";
   document.getElementById("f-adresa").value = "";
   document.getElementById("f-zakazano").value = "";
+  const slaEl = document.getElementById("f-sla");
+  if (slaEl) slaEl.value = "";
   document.getElementById("nalog-error").textContent = "";
   document.getElementById("f-kategorija").innerHTML = kategorije.map((k) => `<option value="${k.id}">${esc(k.naziv)}</option>`).join("");
   document.getElementById("f-tip-usluge").innerHTML = tipoviUsluge.map((t) => `<option value="${t.id}">${esc(t.naziv)}</option>`).join("");
@@ -925,6 +1004,7 @@ document.getElementById("save-nalog").addEventListener("click", async () => {
     adresaIntervencije: document.getElementById("f-adresa").value.trim(),
     dodeljeniTehnicarId: document.getElementById("f-tehnicar").value || null,
     zakazanoZa: izDatetimeLocal(document.getElementById("f-zakazano").value),
+    slaRok: izDatetimeLocal((document.getElementById("f-sla") || {}).value),
   };
   try {
     const rezultat = await posaljiIliZakaziZaKasnije("/nalozi", { method: "POST", body: JSON.stringify(body) }, `Novi nalog: ${naslov}`);
@@ -1009,6 +1089,35 @@ function izracunajIzvestaj() {
       minZaliha: d.minZaliha,
     }));
 
+  const zavrseni = nalozi.filter((n) => n.status === "zavrseno" && n.zavrsenoAt);
+  let mttrSati = null;
+  if (zavrseni.length) {
+    const sum = zavrseni.reduce((s, n) => {
+      const start = n.zapocetoAt || n.createdAt;
+      return s + (new Date(n.zavrsenoAt) - new Date(start));
+    }, 0);
+    mttrSati = Math.round((sum / zavrseni.length / 3600000) * 10) / 10;
+  }
+
+  let mtbfDani = null;
+  const poOpremi = {};
+  nalozi.forEach((n) => {
+    if (!n.opremaId) return;
+    if (!poOpremi[n.opremaId]) poOpremi[n.opremaId] = [];
+    poOpremi[n.opremaId].push(n);
+  });
+  const gapovi = [];
+  Object.values(poOpremi).forEach((lista) => {
+    if (lista.length < 2) return;
+    const sorted = [...lista].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+    for (let i = 1; i < sorted.length; i++) {
+      gapovi.push(new Date(sorted[i].createdAt) - new Date(sorted[i - 1].createdAt));
+    }
+  });
+  if (gapovi.length) {
+    mtbfDani = Math.round((gapovi.reduce((a, b) => a + b, 0) / gapovi.length / 86400000) * 10) / 10;
+  }
+
   return {
     firmaNaziv,
     generisano: new Date().toLocaleString("sr-RS"),
@@ -1020,6 +1129,8 @@ function izracunajIzvestaj() {
     poKategoriji,
     racuniPregled,
     niskaZaliha,
+    mttrSati,
+    mtbfDani,
   };
 }
 
@@ -1228,9 +1339,22 @@ async function otvoriDetaljNaloga(id) {
 function renderDetalj() {
   const n = detaljNalog;
   const zatvoren = n.status === "zavrseno" || n.status === "otkazano";
+  const magacinOpts = magacini.map((m) =>
+    `<option value="${m.id}">${esc(m.naziv)} (${m.tip})</option>`
+  ).join("");
   const deloviOptions = delovi.map((d) =>
     `<option value="${d.id}">${esc(d.sifra)} — ${esc(d.naziv)} (stanje ${d.ukupnoNaStanju})</option>`
   ).join("");
+  const checklist = n.checklist || [];
+  const checklistHtml = checklist.length
+    ? checklist.map((c) =>
+      `<label style="display:flex;align-items:flex-start;gap:8px;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px;cursor:pointer;">
+        <input type="checkbox" data-check="${c.id}" ${c.zavrseno ? "checked" : ""} ${zatvoren ? "disabled" : ""} style="margin-top:3px;">
+        <span style="${c.zavrseno ? "text-decoration:line-through;color:var(--ink-faint)" : ""}">${esc(c.tekst)}</span>
+      </label>`
+    ).join("")
+    : `<p class="muted">Nema checklist stavki (stari nalog — novi dobijaju automatski).</p>`;
+  const slaOverdue = n.slaRok && new Date(n.slaRok) < new Date() && !zatvoren;
 
   const utrosakRedovi = (n.utroseniDelovi || []).map((u) =>
     `<tr>
@@ -1264,19 +1388,22 @@ function renderDetalj() {
   document.getElementById("nalog-detalj-body").innerHTML = `
     <div class="detail-head">
       <div>
-        <div class="card-id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}</div>
+        <div class="card-id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}${slaOverdue ? ' · <span class="badge kritican">SLA istekao</span>' : ""}</div>
         <h3>${esc(n.naslov)}</h3>
       </div>
       <button class="btn" id="zatvori-detalj">Zatvori</button>
     </div>
     <div class="prilog-actions" style="margin-top:0;">
       <button class="btn btn-sm" id="d-pdf">PDF / štampa</button>
+      ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
     </div>
     <div class="detail-meta">
       <div><div class="k">Klijent</div><div class="v">${esc(n.klijent?.nazivIliIme || "—")}</div></div>
       <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
       <div><div class="k">Kategorija / usluga</div><div class="v">${esc(n.kategorija?.naziv || "")} · ${esc(n.tipUsluge?.naziv || "")}</div></div>
       <div><div class="k">Tehničar</div><div class="v">${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "Nedodeljen"}</div></div>
+      <div><div class="k">SLA rok</div><div class="v">${n.slaRok ? fmtDate(n.slaRok) : "—"}</div></div>
+      <div><div class="k">Započeto</div><div class="v">${n.zapocetoAt ? fmtDate(n.zapocetoAt) : "—"}</div></div>
     </div>
     <div class="status-actions">
       ${["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"].map((s) =>
@@ -1308,11 +1435,16 @@ function renderDetalj() {
         </select>
       </div>
     </div>
+    <div class="field"><label>SLA rok</label>
+      <input id="d-sla" type="datetime-local" value="${uDatetimeLocal(n.slaRok)}" ${zatvoren ? "disabled" : ""}></div>
     <div class="field"><label>Adresa intervencije</label>
       <input id="d-adresa" value="${esc(n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
     <div class="field"><label>Opis / beleška sa terena</label>
       <textarea id="d-opis" ${zatvoren ? "disabled" : ""}>${esc(n.opis || "")}</textarea></div>
     ${zatvoren ? "" : `<div class="modal-actions" style="margin-top:0;"><button class="btn btn-primary" id="d-sacuvaj" style="width:auto;">Sačuvaj izmene</button></div>`}
+
+    <div class="section-title">Checklist (${checklist.filter((c) => c.zavrseno).length}/${checklist.length})</div>
+    <div id="d-checklist">${checklistHtml}</div>
 
     <div class="section-title">Fotografije</div>
     <div class="prilog-grid">${galerija}</div>
@@ -1351,11 +1483,11 @@ function renderDetalj() {
     <table><thead><tr><th>Deo</th><th>Kol.</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
     ${zatvoren ? "" : `
       <div class="field-row" style="margin-top:10px;">
+        <div class="field"><label>Magacin</label><select id="d-magacin"><option value="">Automatski (vozilo → centralni)</option>${magacinOpts}</select></div>
         <div class="field"><label>Dodaj deo</label><select id="d-deo">${deloviOptions || "<option value=''>Nema delova u magacinu</option>"}</select></div>
-        <div class="field"><label>Količina</label><input id="d-kol" type="number" min="1" value="1"></div>
       </div>
+      <div class="field"><label>Količina</label><input id="d-kol" type="number" min="1" value="1"></div>
       <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
-      <p class="muted" style="margin-top:8px;">Zaliha se skida odmah. Ako deo nije na stanju, prvo uradi prijem u magacinu.</p>
     `}
     ${n.racun ? `<p class="muted" style="margin-top:12px;">Račun: ${esc(n.racun.brojRacuna)} (${esc(n.racun.status)})</p>` : ""}
     <div class="section-title">Istorija statusa</div>
@@ -1365,6 +1497,21 @@ function renderDetalj() {
   document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
   const pdfBtn = document.getElementById("d-pdf");
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
+  const histBtn = document.getElementById("d-istorija-opreme");
+  if (histBtn) histBtn.onclick = () => otvoriIstorijuOpreme(n.opremaId);
+
+  document.querySelectorAll("#nalog-detalj-body [data-check]").forEach((cb) => {
+    cb.addEventListener("change", async () => {
+      try {
+        await api(`/nalozi/${n.id}/checklist/${cb.dataset.check}`, {
+          method: "PATCH",
+          body: JSON.stringify({ zavrseno: cb.checked }),
+        });
+        detaljNalog = await api(`/nalozi/${n.id}`);
+        renderDetalj();
+      } catch (e) { showToast(e.message); cb.checked = !cb.checked; }
+    });
+  });
 
   document.querySelectorAll("#nalog-detalj-body [data-zoom]").forEach((img) => {
     img.addEventListener("click", () => {
@@ -1398,6 +1545,7 @@ function renderDetalj() {
             adresaIntervencije: document.getElementById("d-adresa").value.trim(),
             dodeljeniTehnicarId: document.getElementById("d-tehnicar").value || null,
             zakazanoZa: izDatetimeLocal(document.getElementById("d-zakazano").value),
+            slaRok: izDatetimeLocal(document.getElementById("d-sla").value),
           }),
         });
         const i = nalozi.findIndex((x) => x.id === n.id);
@@ -1415,10 +1563,16 @@ function renderDetalj() {
     dodaj.onclick = async () => {
       const deoId = document.getElementById("d-deo").value;
       const kolicina = document.getElementById("d-kol").value;
+      const magacinEl = document.getElementById("d-magacin");
+      const magacinId = magacinEl && magacinEl.value ? magacinEl.value : null;
       if (!deoId) { showToast("Izaberite deo."); return; }
       try {
-        await api(`/nalozi/${n.id}/delovi`, { method: "POST", body: JSON.stringify({ deoId, kolicina }) });
+        await api(`/nalozi/${n.id}/delovi`, {
+          method: "POST",
+          body: JSON.stringify({ deoId, kolicina, magacinId }),
+        });
         delovi = await api("/delovi");
+        magacini = await api("/magacini").catch(() => magacini);
         detaljNalog = await api(`/nalozi/${n.id}`);
         renderDetalj();
       } catch (e) { showToast(e.message); }
@@ -1765,6 +1919,93 @@ document.getElementById("save-korisnik").addEventListener("click", async () => {
   try {
     korisnici.push(await api("/korisnici", { method: "POST", body: JSON.stringify(body) }));
     document.getElementById("overlay-korisnik").classList.remove("open");
+    render();
+  } catch (e) { err.textContent = e.message; }
+});
+
+async function otvoriIstorijuOpreme(opremaId) {
+  if (!opremaId) return;
+  const body = document.getElementById("istorija-opreme-body");
+  body.innerHTML = `<p class="muted">Učitavam istoriju…</p>`;
+  document.getElementById("overlay-istorija-opreme").classList.add("open");
+  try {
+    const data = await api(`/oprema/${opremaId}/istorija`);
+    const o = data.oprema;
+    const m = data.metrike || {};
+    const redovi = (data.nalozi || []).map((n) =>
+      `<tr class="clickable" data-nalog="${n.id}">
+        <td class="mono">${esc(n.brojNaloga)}</td>
+        <td>${esc(n.naslov)}</td>
+        <td>${esc(statusLabel(n.status))}</td>
+        <td class="mono">${fmtDate(n.createdAt)}</td>
+        <td>${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "—"}</td>
+      </tr>`
+    ).join("") || `<tr><td colspan="5" class="empty">Nema naloga za ovu opremu</td></tr>`;
+    body.innerHTML = `
+      <div class="detail-head">
+        <div>
+          <div class="muted">Istorija servisiranja</div>
+          <h3>${esc(o.naziv)}</h3>
+          <p class="muted">${esc(o.klijent?.nazivIliIme || "")} · ${esc(o.kategorija?.naziv || "")}</p>
+        </div>
+        <button class="btn" id="zatvori-istoriju">Zatvori</button>
+      </div>
+      <div class="stats-row">
+        <div class="stat-card"><div class="label">Nalozi</div><div class="value">${m.brojNaloga || 0}</div></div>
+        <div class="stat-card"><div class="label">MTTR (h)</div><div class="value" style="font-size:20px;">${m.mttrSati ?? "—"}</div></div>
+        <div class="stat-card"><div class="label">MTBF (dana)</div><div class="value" style="font-size:20px;">${m.mtbfDani ?? "—"}</div></div>
+        <div class="stat-card success"><div class="label">Završeno</div><div class="value">${m.brojZavrsenih || 0}</div></div>
+      </div>
+      <table><thead><tr><th>Broj</th><th>Naslov</th><th>Status</th><th>Datum</th><th>Tehničar</th></tr></thead>
+      <tbody>${redovi}</tbody></table>`;
+    document.getElementById("zatvori-istoriju").onclick = () =>
+      document.getElementById("overlay-istorija-opreme").classList.remove("open");
+    body.querySelectorAll("[data-nalog]").forEach((row) => {
+      row.addEventListener("click", () => {
+        document.getElementById("overlay-istorija-opreme").classList.remove("open");
+        otvoriDetaljNaloga(row.dataset.nalog);
+      });
+    });
+  } catch (e) {
+    body.innerHTML = `<p class="error-msg">${esc(e.message)}</p>
+      <button class="btn" id="zatvori-istoriju">Zatvori</button>`;
+    document.getElementById("zatvori-istoriju").onclick = () =>
+      document.getElementById("overlay-istorija-opreme").classList.remove("open");
+  }
+}
+
+function otvoriTransfer() {
+  document.getElementById("ft-deo").innerHTML = delovi.map((d) =>
+    `<option value="${d.id}">${esc(d.sifra)} — ${esc(d.naziv)}</option>`
+  ).join("") || `<option value="">Nema delova</option>`;
+  const opts = magacini.map((m) => `<option value="${m.id}">${esc(m.naziv)}</option>`).join("");
+  document.getElementById("ft-iz").innerHTML = opts;
+  document.getElementById("ft-u").innerHTML = opts;
+  document.getElementById("ft-kolicina").value = "1";
+  document.getElementById("transfer-error").textContent = "";
+  document.getElementById("overlay-transfer").classList.add("open");
+}
+
+document.getElementById("cancel-transfer")?.addEventListener("click", () =>
+  document.getElementById("overlay-transfer").classList.remove("open")
+);
+document.getElementById("save-transfer")?.addEventListener("click", async () => {
+  const err = document.getElementById("transfer-error");
+  err.textContent = "";
+  try {
+    await api("/magacini/transfer", {
+      method: "POST",
+      body: JSON.stringify({
+        deoId: document.getElementById("ft-deo").value,
+        izMagacinaId: document.getElementById("ft-iz").value,
+        uMagacinId: document.getElementById("ft-u").value,
+        kolicina: document.getElementById("ft-kolicina").value,
+      }),
+    });
+    delovi = await api("/delovi");
+    magacini = await api("/magacini");
+    document.getElementById("overlay-transfer").classList.remove("open");
+    showToast("Prenos završen.");
     render();
   } catch (e) { err.textContent = e.message; }
 });
