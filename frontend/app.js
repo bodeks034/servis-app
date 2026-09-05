@@ -61,10 +61,33 @@ function procitajApiBase() {
 
 let API_BASE = procitajApiBase();
 const apiInput = document.getElementById("api-url-input");
-if (apiInput) {
-  apiInput.value = API_BASE;
-  apiInput.placeholder = "https://backend-nine-pied-44.vercel.app/api";
+const apiAdvanced = document.getElementById("api-url-advanced");
+if (apiInput) apiInput.value = API_BASE;
+if (apiAdvanced) {
+  apiAdvanced.value = API_BASE;
+  apiAdvanced.placeholder = PRODUKCIJA_API;
 }
+
+let loginBrandClicks = 0;
+document.getElementById("login-brand")?.addEventListener("click", () => {
+  loginBrandClicks += 1;
+  if (loginBrandClicks < 5) return;
+  loginBrandClicks = 0;
+  const box = document.getElementById("api-advanced");
+  if (!box) return;
+  box.classList.toggle("open");
+  if (box.classList.contains("open") && apiAdvanced) {
+    apiAdvanced.value = API_BASE;
+    apiAdvanced.focus();
+  }
+});
+document.getElementById("api-url-advanced")?.addEventListener("change", () => {
+  const v = (apiAdvanced.value || "").trim().replace(/\/$/, "");
+  if (!v) return;
+  if (apiInput) apiInput.value = v;
+  API_BASE = v;
+  localStorage.setItem(API_KEY, API_BASE);
+});
 
 let token = localStorage.getItem(TOKEN_KEY) || null;
 let trenutniKorisnik = null;
@@ -283,18 +306,23 @@ document.querySelectorAll(".login-tab").forEach((tab) => {
 });
 
 function procitajApiSaEkrana() {
-  let uneto = (document.getElementById("api-url-input").value || "").trim().replace(/\/$/, "");
+  const advanced = document.getElementById("api-url-advanced");
+  const hidden = document.getElementById("api-url-input");
+  let uneto = (
+    (advanced && document.getElementById("api-advanced")?.classList.contains("open")
+      ? advanced.value
+      : hidden?.value) || ""
+  ).trim().replace(/\/$/, "");
   const onVercel =
     typeof location !== "undefined" && /\.vercel\.app$/i.test(location.hostname);
   if (onVercel && jeZastarelaApiAdresa(uneto)) {
     uneto = PRODUKCIJA_API;
-    const input = document.getElementById("api-url-input");
-    if (input) input.value = uneto;
   }
-  if (uneto) {
-    API_BASE = uneto;
-    localStorage.setItem(API_KEY, API_BASE);
-  }
+  if (!uneto) uneto = PRODUKCIJA_API;
+  if (hidden) hidden.value = uneto;
+  if (advanced) advanced.value = uneto;
+  API_BASE = uneto;
+  localStorage.setItem(API_KEY, API_BASE);
 }
 
 document.getElementById("li-lozinka").addEventListener("keydown", (e) => {
