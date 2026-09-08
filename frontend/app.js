@@ -2608,7 +2608,7 @@ function otvoriZapisnikZatecenoSaDashboarda() {
     n.status !== "otkazano" &&
     !String(n.id).startsWith("privremeno-")
   );
-  // Prvo oni bez zatečenog, pa ostali aktivni (može se ponovo otvoriti forma 1)
+  // Prvo oni bez zatečenog (prijem), pa ostali aktivni
   const cekajuPrijem = aktivni.filter((n) => !n.zapZatecenoAt && n.status !== "zavrseno");
   const ostali = aktivni.filter((n) => n.status !== "zavrseno" && n.zapZatecenoAt);
   const lista = cekajuPrijem.length ? cekajuPrijem : ostali;
@@ -2622,25 +2622,12 @@ function otvoriZapisnikZatecenoSaDashboarda() {
     return;
   }
 
-  if (lista.length === 1) {
-    otvoriDetaljNalogaNaKorak(lista[0].id, 1);
-    return;
+  // Bez prompt-a: otvori prvi nalog na formi zapisnika (korak 1)
+  const nalog = lista[0];
+  otvoriDetaljNalogaNaKorak(nalog.id, 1);
+  if (lista.length > 1) {
+    showToast(`Zapisnik: ${nalog.brojNaloga}. Ostale otvori klikom na karticu.`);
   }
-
-  const izbor = lista
-    .slice(0, 15)
-    .map((n, i) => `${i + 1}. ${n.brojNaloga} — ${n.naslov}${n.zapZatecenoAt ? " (već ima prijem)" : ""}`)
-    .join("\n");
-  const odg = prompt(
-    `Otvori formu zapisnika o zatečenom stanju — izaberi nalog (1–${Math.min(15, lista.length)}):\n\n${izbor}`
-  );
-  if (odg == null) return;
-  const idx = parseInt(String(odg).trim(), 10) - 1;
-  if (!Number.isFinite(idx) || idx < 0 || idx >= lista.length) {
-    showToast("Neispravan izbor");
-    return;
-  }
-  otvoriDetaljNalogaNaKorak(lista[idx].id, 1);
 }
 
 function renderDetalj() {
