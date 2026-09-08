@@ -674,12 +674,19 @@ function render() {
   const content = document.getElementById("content");
   const q = document.getElementById("search").value.trim().toLowerCase();
   const btnNew = document.getElementById("btn-new");
+  const btnZap = document.getElementById("btn-zapisnik-zateceno");
+  if (btnZap && currentView !== "nalozi") btnZap.classList.add("hidden");
 
   if (currentView === "nalozi") {
     document.getElementById("view-title").textContent = "Dashboard";
     btnNew.textContent = "+ Novi nalog";
     btnNew.classList.remove("hidden");
     btnNew.onclick = otvoriModalNalog;
+    const btnZap = document.getElementById("btn-zapisnik-zateceno");
+    if (btnZap) {
+      btnZap.classList.remove("hidden");
+      btnZap.onclick = () => otvoriZapisnikZatecenoSaDashboarda();
+    }
 
     const filtered = nalozi.filter((n) => {
       if (n.status === "otkazano") return false;
@@ -718,6 +725,11 @@ function render() {
           ${n.prioritet !== "normalan" ? `<span class="badge ${n.prioritet}">${n.prioritet === "kritican" ? "Kritično" : "Hitno"}</span>` : ""}
         </div>
         <div class="need">${need}</div>
+        <div class="card-actions">
+          ${korak === 1 ? `<button type="button" class="btn btn-sm btn-primary" data-otvori-zateceno="${n.id}" style="width:auto;">Otvori zapisnik o zatečenom stanju</button>` : ""}
+          ${korak === 2 ? `<button type="button" class="btn btn-sm" data-id-open="${n.id}" style="width:auto;">Otvori radni nalog</button>` : ""}
+          ${korak === 3 ? `<button type="button" class="btn btn-sm btn-primary" data-otvori-zavrseno="${n.id}" style="width:auto;">Otvori zapisnik o završenim radovima</button>` : ""}
+        </div>
       </div>`;
     }
 
@@ -726,6 +738,9 @@ function render() {
       <div class="dash-step-pill k1">
         <strong>1) Zapisnik o zatečenom stanju (prijem)</strong>
         Popuni pri dolasku — pre rada. Trenutno: <b>${k1.length}</b>
+        <div class="pill-actions">
+          <button type="button" class="btn btn-sm btn-primary" id="dash-otvori-zateceno" style="width:auto;">Otvori zapisnik o zatečenom stanju</button>
+        </div>
       </div>
       <div class="dash-step-pill k2">
         <strong>2) Radni nalog</strong>
@@ -765,8 +780,8 @@ function render() {
             ? k1.map((n) => dashCard(n, 1)).join("")
             : `<div class="dash-empty">
                 Nema naloga koji čekaju prijem.<br>
-                Napravi novi nalog — pojaviće se ovde dok ne sačuvaš zapisnik o zatečenom stanju.
-                <button type="button" class="btn btn-sm btn-primary" id="dash-novi-prijem" style="width:auto;">+ Novi nalog (prijem)</button>
+                Klikni dugme ispod da napraviš nalog i odmah otvoriš zapisnik o zatečenom stanju.
+                <button type="button" class="btn btn-sm btn-primary" id="dash-novi-prijem" style="width:auto;">Otvori zapisnik o zatečenom stanju</button>
               </div>`}
         </div>
       </div>
@@ -806,10 +821,33 @@ function render() {
       chip.addEventListener("click", () => { categoryFilter = chip.dataset.cat; render(); });
     });
     content.querySelectorAll(".dash-card[data-id]").forEach((card) => {
-      card.addEventListener("click", () => otvoriDetaljNaloga(card.dataset.id));
+      card.addEventListener("click", (e) => {
+        if (e.target.closest("button")) return;
+        otvoriDetaljNaloga(card.dataset.id);
+      });
+    });
+    content.querySelectorAll("[data-otvori-zateceno]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        otvoriDetaljNalogaNaKorak(b.dataset.otvoriZateceno, 1);
+      });
+    });
+    content.querySelectorAll("[data-otvori-zavrseno]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        otvoriDetaljNalogaNaKorak(b.dataset.otvoriZavrseno, 3);
+      });
+    });
+    content.querySelectorAll("[data-id-open]").forEach((b) => {
+      b.addEventListener("click", (e) => {
+        e.stopPropagation();
+        otvoriDetaljNalogaNaKorak(b.dataset.idOpen, 2);
+      });
     });
     const noviPrijem = document.getElementById("dash-novi-prijem");
-    if (noviPrijem) noviPrijem.onclick = () => otvoriModalNalog();
+    if (noviPrijem) noviPrijem.onclick = () => otvoriZapisnikZatecenoSaDashboarda();
+    const dashOtvori = document.getElementById("dash-otvori-zateceno");
+    if (dashOtvori) dashOtvori.onclick = () => otvoriZapisnikZatecenoSaDashboarda();
   }
 
   else if (currentView === "mapa") {
@@ -2536,6 +2574,38 @@ async function otvoriDetaljNaloga(id) {
   renderDetalj();
 }
 
+/** Otvori detalj i skroluj na korak (1=zatečeno, 2=rad, 3=završeno) */
+async function otvoriDetaljNalogaNaKorak(id, korakCilj) {
+  window.__nalogScrollKorak = korakCilj;
+  await otvoriDetaljNaloga(id);
+}
+
+/** Dugme sa dashboarda: otvori postojeći nalog na prijemu ili napravi novi */
+function otvoriZapisnikZatecenoSaDashboarda() {
+  const kandidati = (nalozi || []).filter((n) => nalogTokKorak(n) === 1 && !String(n.id).startsWith("privremeno-"));
+  if (kandidati.length === 1) {
+    otvoriDetaljNalogaNaKorak(kandidati[0].id, 1);
+    return;
+  }
+  if (kandidati.length > 1) {
+    const izbor = kandidati
+      .slice(0, 12)
+      .map((n, i) => `${i + 1}. ${n.brojNaloga} — ${n.naslov}`)
+      .join("\n");
+    const odg = prompt(
+      `Izaberi nalog za zapisnik o zatečenom stanju (unesite broj 1–${Math.min(12, kandidati.length)}):\n\n${izbor}\n\nIli ostavi prazno za novi nalog.`
+    );
+    if (odg == null) return;
+    const idx = parseInt(String(odg).trim(), 10) - 1;
+    if (Number.isFinite(idx) && idx >= 0 && idx < kandidati.length) {
+      otvoriDetaljNalogaNaKorak(kandidati[idx].id, 1);
+      return;
+    }
+  }
+  showToast("Prvo sačuvaj nalog — zatim se otvara zapisnik o zatečenom stanju");
+  otvoriModalNalog();
+}
+
 function renderDetalj() {
   const n = detaljNalog;
   const zatvoren = n.status === "zavrseno" || n.status === "otkazano";
@@ -2647,6 +2717,15 @@ function renderDetalj() {
         <span class="num">3.</span> Završeni posao
         <span class="st">${imaZavrsenoZap ? "Sačuvano " + fmtDate(n.zapZavrsenoZapAt) : "Popuni kad je posao gotov"}</span>
       </div>
+    </div>
+
+    <div class="prilog-actions" style="margin:0 0 14px;">
+      <button type="button" class="btn btn-primary" id="d-otvori-zateceno" style="width:auto;background:#2B6E73;border-color:#2B6E73;">
+        Otvori zapisnik o zatečenom stanju
+      </button>
+      <button type="button" class="btn" id="d-otvori-zavrseno-zap" style="width:auto;">
+        Otvori zapisnik o završenim radovima
+      </button>
     </div>
 
     <div class="detail-meta">
@@ -2825,10 +2904,28 @@ function renderDetalj() {
   `;
 
   document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
+  const scrollKorak = window.__nalogScrollKorak || korak;
+  window.__nalogScrollKorak = null;
   setTimeout(() => {
-    const sekcija = document.getElementById(`sekcija-korak-${korak}`);
+    const sekcija = document.getElementById(`sekcija-korak-${scrollKorak}`);
     if (sekcija) sekcija.scrollIntoView({ behavior: "smooth", block: "start" });
   }, 60);
+
+  const dOtvoriZat = document.getElementById("d-otvori-zateceno");
+  if (dOtvoriZat) {
+    dOtvoriZat.onclick = () => {
+      document.getElementById("sekcija-korak-1")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      otvoriPdf(`/nalozi/${n.id}/zapisnik/zateceno`);
+    };
+  }
+  const dOtvoriZav = document.getElementById("d-otvori-zavrseno-zap");
+  if (dOtvoriZav) {
+    dOtvoriZav.onclick = () => {
+      document.getElementById("sekcija-korak-3")?.scrollIntoView({ behavior: "smooth", block: "start" });
+      otvoriPdf(`/nalozi/${n.id}/zapisnik/zavrseno`);
+    };
+  }
+
   const pdfBtn = document.getElementById("d-pdf");
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
   const histBtn = document.getElementById("d-istorija-opreme");
