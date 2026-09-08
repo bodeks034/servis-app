@@ -823,7 +823,11 @@ function render() {
     content.querySelectorAll(".dash-card[data-id]").forEach((card) => {
       card.addEventListener("click", (e) => {
         if (e.target.closest("button")) return;
-        otvoriDetaljNaloga(card.dataset.id);
+        // Kartice u koloni 1 uvek na formu zapisnika
+        const uKoloni1 = card.closest(".dash-col.k1");
+        if (uKoloni1) otvoriDetaljNalogaNaKorak(card.dataset.id, 1);
+        else if (card.closest(".dash-col.k3")) otvoriDetaljNalogaNaKorak(card.dataset.id, 3);
+        else otvoriDetaljNalogaNaKorak(card.dataset.id, 2);
       });
     });
     content.querySelectorAll("[data-otvori-zateceno]").forEach((b) => {
@@ -2147,6 +2151,8 @@ async function osveziMatchingTehnicara() {
 }
 
 function otvoriModalNalog() {
+  const naslov = document.querySelector("#overlay-nalog h3");
+  if (naslov) naslov.textContent = "Novi radni nalog";
   document.getElementById("f-naslov").value = "";
   document.getElementById("f-opis").value = "";
   document.getElementById("f-adresa").value = "";
@@ -2233,9 +2239,10 @@ document.getElementById("save-nalog").addEventListener("click", async () => {
     render();
     if (rezultat && !rezultat.__queued && rezultat.id) {
       detaljUiKorak = window.__posleNovogNalogaKorak || 1;
+      detaljForsiranKorak = true;
       window.__posleNovogNalogaKorak = null;
-      otvoriDetaljNaloga(rezultat.id);
-      showToast("Korak 1: popuni formu zapisnika o zatečenom stanju");
+      await otvoriDetaljNaloga(rezultat.id);
+      showToast("Forma: zapisnik o zatečenom stanju");
     }
   } catch (e) { err.textContent = e.message; }
 });
@@ -2563,6 +2570,7 @@ function kompresujSliku(file, maxW = 1280, quality = 0.72) {
 }
 
 let detaljUiKorak = null; // 1 | 2 | 3 — koja forma se prikazuje u detalju
+let detaljForsiranKorak = false; // true = ne prepisuj korak automatski
 
 async function otvoriDetaljNaloga(id) {
   const body = document.getElementById("nalog-detalj-body");
@@ -2572,47 +2580,67 @@ async function otvoriDetaljNaloga(id) {
     detaljNalog = await api(`/nalozi/${id}`);
   } catch (e) {
     body.innerHTML = `<p class="error-msg">${esc(e.message)}</p><div class="modal-actions"><button class="btn" id="zatvori-detalj">Zatvori</button></div>`;
-    document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
+    document.getElementById("zatvori-detalj").onclick = () => {
+      detaljUiKorak = null;
+      detaljForsiranKorak = false;
+      document.getElementById("overlay-nalog-detalj").classList.remove("open");
+    };
     return;
   }
-  if (detaljUiKorak == null) {
+  if (!detaljForsiranKorak || detaljUiKorak == null) {
     const k = nalogTokKorak(detaljNalog);
     detaljUiKorak = k === 4 || k === 0 ? 3 : (k || 1);
   }
+  detaljForsiranKorak = false;
   renderDetalj();
 }
 
-/** Otvori detalj na konkretnoj formi (1=zatečeno, 2=radni nalog, 3=završeni) */
+/** Otvori konkretnu formu: 1=zapisnik zatečeno, 2=radni nalog, 3=zapisnik završeni */
 async function otvoriDetaljNalogaNaKorak(id, korakCilj) {
   detaljUiKorak = korakCilj;
+  detaljForsiranKorak = true;
   await otvoriDetaljNaloga(id);
 }
 
-/** Dugme sa dashboarda: otvori formu zapisnika o zatečenom stanju */
+/** Dugme: UVEK otvara formu zapisnika o zatečenom stanju (ne formu radnog naloga) */
 function otvoriZapisnikZatecenoSaDashboarda() {
-  const kandidati = (nalozi || []).filter((n) => nalogTokKorak(n) === 1 && !String(n.id).startsWith("privremeno-"));
-  if (kandidati.length === 1) {
-    otvoriDetaljNalogaNaKorak(kandidati[0].id, 1);
+  const aktivni = (nalozi || []).filter((n) =>
+    n.status !== "otkazano" &&
+    !String(n.id).startsWith("privremeno-")
+  );
+  // Prvo oni bez zatečenog, pa ostali aktivni (može se ponovo otvoriti forma 1)
+  const cekajuPrijem = aktivni.filter((n) => !n.zapZatecenoAt && n.status !== "zavrseno");
+  const ostali = aktivni.filter((n) => n.status !== "zavrseno" && n.zapZatecenoAt);
+  const lista = cekajuPrijem.length ? cekajuPrijem : ostali;
+
+  if (lista.length === 0) {
+    window.__posleNovogNalogaKorak = 1;
+    otvoriModalNalog();
+    const naslov = document.querySelector("#overlay-nalog h3");
+    if (naslov) naslov.textContent = "Novi nalog → zatim zapisnik o zatečenom stanju";
+    showToast("Sačuvaj nalog — odmah se otvara forma zapisnika o zatečenom stanju");
     return;
   }
-  if (kandidati.length > 1) {
-    const izbor = kandidati
-      .slice(0, 12)
-      .map((n, i) => `${i + 1}. ${n.brojNaloga} — ${n.naslov}`)
-      .join("\n");
-    const odg = prompt(
-      `Izaberi nalog za zapisnik o zatečenom stanju (1–${Math.min(12, kandidati.length)}):\n\n${izbor}\n\nPrazno = novi nalog.`
-    );
-    if (odg == null) return;
-    const idx = parseInt(String(odg).trim(), 10) - 1;
-    if (Number.isFinite(idx) && idx >= 0 && idx < kandidati.length) {
-      otvoriDetaljNalogaNaKorak(kandidati[idx].id, 1);
-      return;
-    }
+
+  if (lista.length === 1) {
+    otvoriDetaljNalogaNaKorak(lista[0].id, 1);
+    return;
   }
-  showToast("Sačuvaj nalog — otvara se forma zapisnika o zatečenom stanju");
-  window.__posleNovogNalogaKorak = 1;
-  otvoriModalNalog();
+
+  const izbor = lista
+    .slice(0, 15)
+    .map((n, i) => `${i + 1}. ${n.brojNaloga} — ${n.naslov}${n.zapZatecenoAt ? " (već ima prijem)" : ""}`)
+    .join("\n");
+  const odg = prompt(
+    `Otvori formu zapisnika o zatečenom stanju — izaberi nalog (1–${Math.min(15, lista.length)}):\n\n${izbor}`
+  );
+  if (odg == null) return;
+  const idx = parseInt(String(odg).trim(), 10) - 1;
+  if (!Number.isFinite(idx) || idx < 0 || idx >= lista.length) {
+    showToast("Neispravan izbor");
+    return;
+  }
+  otvoriDetaljNalogaNaKorak(lista[idx].id, 1);
 }
 
 function renderDetalj() {
@@ -2701,10 +2729,11 @@ function renderDetalj() {
 
   const imaZateceno = !!n.zapZatecenoAt;
   const imaZavrsenoZap = !!n.zapZavrsenoZapAt;
-  let prikazKorak = detaljUiKorak || 1;
-  if (!imaZateceno && !zatvoren) prikazKorak = 1;
-  if (prikazKorak < 1) prikazKorak = 1;
-  if (prikazKorak > 3) prikazKorak = 3;
+  // Prikaz samo one forme koja je tražena (1=zapisnik zatečeno, 2=radni nalog, 3=završeni)
+  let prikazKorak = Number(detaljUiKorak) || 1;
+  if (prikazKorak < 1 || prikazKorak > 3) prikazKorak = 1;
+  // Bez sačuvanog prijema ne dozvoli formu 2/3 (osim pregleda zatvorenog)
+  if (!imaZateceno && !zatvoren && prikazKorak !== 1) prikazKorak = 1;
   detaljUiKorak = prikazKorak;
 
   const metaBlok = `
@@ -2937,6 +2966,7 @@ function renderDetalj() {
 
   document.getElementById("zatvori-detalj").onclick = () => {
     detaljUiKorak = null;
+    detaljForsiranKorak = false;
     document.getElementById("overlay-nalog-detalj").classList.remove("open");
   };
 
