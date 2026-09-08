@@ -2313,10 +2313,11 @@ function renderDetalj() {
       <button class="btn" id="zatvori-detalj">Zatvori</button>
     </div>
     <div class="prilog-actions" style="margin-top:0;">
-      <button class="btn btn-sm" id="d-pdf">PDF / štampa</button>
+      <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;">Štampaj radni nalog (papirni obrazac)</button>
       ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
       ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps">Snimi GPS</button>`}
     </div>
+    <p class="muted" style="margin:8px 0 12px;">PDF je isti layout kao Word „RADNI NALOG PRAZAN”: naručilac, vozilo, delovi, usluge, saglasnost, 3 potpisa.</p>
     <div class="detail-meta">
       <div><div class="k">Klijent</div><div class="v">${esc(n.klijent?.nazivIliIme || "—")}</div></div>
       <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
@@ -2401,7 +2402,7 @@ function renderDetalj() {
       ${potpisBlok("Vozilo / opremu preuzeo", potpisPreuzeo, "potpis_preuzeo")}
     </div>
 
-    <div class="section-title">Usluge (rad)</div>
+    <div class="section-title">USLUGE (rad) — kao na papirnom nalogu</div>
     <table><thead><tr><th>Usluga</th><th>Kol.</th><th>Cena</th><th>Vrednost</th><th></th></tr></thead><tbody>${uslugeRedovi}</tbody></table>
     ${zatvoren ? "" : `
       <div class="field-row" style="margin-top:10px;">
@@ -2412,7 +2413,7 @@ function renderDetalj() {
       <button class="btn btn-sm" id="d-dodaj-uslugu">Dodaj uslugu</button>
     `}
 
-    <div class="section-title">Utrošeni delovi</div>
+    <div class="section-title">DELOVI</div>
     <table><thead><tr><th>Deo</th><th>Kol.</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
     ${zatvoren ? "" : `
       <div class="field-row" style="margin-top:10px;">

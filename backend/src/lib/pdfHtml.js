@@ -86,10 +86,10 @@ function nalogHtml(nalog, firma) {
     ? `${nalog.kreirao.ime} ${nalog.kreirao.prezime}`
     : "—";
 
-  const emptyDelovi = Array.from({ length: Math.max(0, 3 - (nalog.utroseniDelovi || []).length) }, (_, i) =>
+  const emptyDelovi = Array.from({ length: Math.max(0, 10 - (nalog.utroseniDelovi || []).length) }, (_, i) =>
     `<tr><td class="center muted">${(nalog.utroseniDelovi || []).length + i + 1}.</td><td></td><td></td><td></td><td></td><td></td></tr>`
   ).join("");
-  const emptyUsluge = Array.from({ length: Math.max(0, 2 - (nalog.usluge || []).length) }, (_, i) =>
+  const emptyUsluge = Array.from({ length: Math.max(0, 5 - (nalog.usluge || []).length) }, (_, i) =>
     `<tr><td class="center muted">${(nalog.usluge || []).length + i + 1}.</td><td></td><td></td><td></td><td></td></tr>`
   ).join("");
 
@@ -97,59 +97,65 @@ function nalogHtml(nalog, firma) {
   <div class="muted center">${esc(firma?.naziv || "Servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` · ${esc(firma.adresa)}` : ""}</div>
   <h1>RADNI NALOG BR. ${esc(nalog.brojNaloga)}</h1>
 
-  <div class="grid3" style="margin-top:10px;">
-    <div class="box"><div class="label">Datum prijema</div><div class="val">${fmtDay(nalog.createdAt)}</div></div>
-    <div class="box"><div class="label">Završetak radova</div><div class="val">${nalog.zavrsenoAt ? fmtDay(nalog.zavrsenoAt) : "—"}</div></div>
-    <div class="box"><div class="label">Izradio radni nalog</div><div class="val">${esc(kreirao)}</div></div>
-  </div>
+  <table style="margin-top:10px;">
+    <tr>
+      <th>Broj naloga</th><th>Datum prijema</th><th>Završetak radova</th><th>Izradio radni nalog</th>
+    </tr>
+    <tr>
+      <td class="mono">${esc(nalog.brojNaloga)}</td>
+      <td>${fmtDay(nalog.createdAt)}</td>
+      <td>${nalog.zavrsenoAt ? fmtDay(nalog.zavrsenoAt) : ""}</td>
+      <td>${esc(kreirao)}</td>
+    </tr>
+  </table>
 
-  <div class="box" style="margin-top:8px;">
-    <div class="label">Naručilac radova</div>
-    <div class="val">${esc(nalog.klijent?.nazivIliIme || "—")}</div>
-    <div>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}</div>
-    <div>${esc(nalog.klijent?.telefon || "")}${nalog.klijent?.email ? " · " + esc(nalog.klijent.email) : ""}</div>
-  </div>
+  <table style="margin-top:8px;">
+    <tr><th colspan="2">Naručilac radova</th></tr>
+    <tr>
+      <td style="width:50%"><strong>${esc(nalog.klijent?.nazivIliIme || "—")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}</td>
+      <td>Tel: ${esc(nalog.klijent?.telefon || "—")}<br>${esc(nalog.klijent?.email || "")}</td>
+    </tr>
+  </table>
 
-  <div class="box" style="margin-top:8px;">
-    <div class="label">Napomena / opis posla</div>
-    <div class="val">${esc(nalog.naslov)}</div>
-    <div style="white-space:pre-wrap;margin-top:4px;">${esc(nalog.opis || "")}</div>
-  </div>
+  <table style="margin-top:8px;">
+    <tr><th>Napomena</th></tr>
+    <tr><td><strong>${esc(nalog.naslov)}</strong><div style="white-space:pre-wrap;margin-top:4px;">${esc(nalog.opis || "")}</div></td></tr>
+  </table>
 
-  <h2>Vozilo / oprema</h2>
+  <h2 style="margin-top:12px;">Vozilo / oprema</h2>
   <table>
     <tr>
-      <th>Marka i model</th><th>Reg. oznaka</th><th>Broj šasije / VIN</th><th>Stanje km</th><th>Stanje goriva</th>
+      <th>Marka i model</th><th>Reg. oznaka</th><th>Broj šasije</th><th>Stanje Km</th><th>Stanje goriva</th>
     </tr>
     <tr>
       <td>${esc(markaModel)}</td>
-      <td class="mono">${esc(o.registracija || "—")}</td>
-      <td class="mono">${esc(o.vin || o.serijskiBroj || "—")}</td>
-      <td class="mono">${nalog.kmPriPrijemu != null ? nalog.kmPriPrijemu : (o.kilometraza != null ? o.kilometraza : "—")}</td>
-      <td>${esc(nalog.stanjeGoriva || "—")}</td>
+      <td class="mono">${esc(o.registracija || "")}</td>
+      <td class="mono">${esc(o.vin || o.serijskiBroj || "")}</td>
+      <td class="mono">${nalog.kmPriPrijemu != null ? nalog.kmPriPrijemu : (o.kilometraza != null ? o.kilometraza : "")}</td>
+      <td>${esc(nalog.stanjeGoriva || "")}</td>
     </tr>
     <tr>
       <th>Snaga (kW)</th><th>Zapremina (ccm)</th><th>Broj motora</th><th>God. proizv.</th><th>Boja</th>
     </tr>
     <tr>
-      <td class="mono">${o.snagaKw != null ? o.snagaKw : "—"}</td>
-      <td class="mono">${o.zapreminaCcm != null ? o.zapreminaCcm : "—"}</td>
-      <td class="mono">${esc(o.brojMotora || "—")}</td>
-      <td class="mono">${o.godinaProizvodnje != null ? o.godinaProizvodnje : "—"}</td>
-      <td>${esc(o.boja || "—")}</td>
+      <td class="mono">${o.snagaKw != null ? o.snagaKw : ""}</td>
+      <td class="mono">${o.zapreminaCcm != null ? o.zapreminaCcm : ""}</td>
+      <td class="mono">${esc(o.brojMotora || "")}</td>
+      <td class="mono">${o.godinaProizvodnje != null ? o.godinaProizvodnje : ""}</td>
+      <td>${esc(o.boja || "")}</td>
     </tr>
   </table>
 
-  <h2>Delovi</h2>
+  <h2>DELOVI</h2>
   <table>
     <thead><tr><th class="center">R.b.</th><th>Kataloški broj</th><th>Naziv</th><th class="center">Kol.</th><th class="right">Cena</th><th class="right">Vrednost</th></tr></thead>
-    <tbody>${delovi || ""}${emptyDelovi || (delovi ? "" : `<tr><td colspan="6" class="muted">Nema delova</td></tr>`)}</tbody>
+    <tbody>${delovi}${emptyDelovi}</tbody>
   </table>
 
-  <h2>Usluge</h2>
+  <h2>USLUGE</h2>
   <table>
     <thead><tr><th class="center">R.b.</th><th>Usluga</th><th class="center">Kol.</th><th class="right">Cena</th><th class="right">Vrednost</th></tr></thead>
-    <tbody>${usluge || ""}${emptyUsluge || (usluge ? "" : `<tr><td colspan="5" class="muted">Nema usluga</td></tr>`)}</tbody>
+    <tbody>${usluge}${emptyUsluge}</tbody>
   </table>
 
   <div class="legal">${esc(SAGLASNOST)}</div>
@@ -165,10 +171,9 @@ function nalogHtml(nalog, firma) {
     </div>
     <div class="sig-box">
       ${potpisPreuzeo ? `<img src="${esc(potpisPreuzeo.fajlUrl)}" alt="Preuzeo">` : `<div class="sig-line"></div>`}
-      <div>Vozilo / opremu preuzeo</div>
+      <div>Vozilo preuzeo</div>
     </div>
-  </div>
-  <p class="muted" style="margin-top:16px;">Status: ${esc(nalog.status)} · Prioritet: ${esc(nalog.prioritet)} · Generisano ${fmt(new Date())}</p>`;
+  </div>`;
 
   return htmlShell(`Nalog ${nalog.brojNaloga}`, body);
 }

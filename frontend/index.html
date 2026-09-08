@@ -365,6 +365,7 @@
     </div>
     <div class="field"><label>SLA rok (opciono — inače po prioritetu: krit. 4h / hitno 24h / normalan 72h)</label><input id="f-sla" type="datetime-local"></div>
     <div class="field"><label>Adresa intervencije</label><input id="f-adresa" placeholder="Ako je posao na terenu"></div>
+    <div class="section-title" style="margin:12px 0 8px;">Prijava kao na papirnom radnom nalogu</div>
     <div class="field-row">
       <div class="field"><label>Stanje goriva</label>
         <select id="f-gorivo">
@@ -376,9 +377,9 @@
           <option value="pun">Pun</option>
         </select>
       </div>
-      <div class="field"><label>Km pri prijemu</label><input id="f-km-prijem" type="number" placeholder="npr. 145000"></div>
+      <div class="field"><label>Km / stanje km pri prijemu</label><input id="f-km-prijem" type="number" placeholder="npr. 145000"></div>
     </div>
-    <div class="field"><label>Opis / napomena</label><textarea id="f-opis"></textarea></div>
+    <div class="field"><label>Napomena (šta se radi / predaja delova)</label><textarea id="f-opis" placeholder="npr. 1. Filter ulja predaja&#10;2. Motorno ulje 5 lit"></textarea></div>
     <div class="error-msg" id="nalog-error"></div>
     <div class="modal-actions"><button class="btn" id="cancel-nalog">Otkaži</button><button class="btn btn-primary" id="save-nalog" style="width:auto;">Sačuvaj</button></div>
   </div>
