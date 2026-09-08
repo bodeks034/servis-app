@@ -2232,8 +2232,10 @@ document.getElementById("save-nalog").addEventListener("click", async () => {
     document.querySelector('[data-view="nalozi"]').classList.add("active");
     render();
     if (rezultat && !rezultat.__queued && rezultat.id) {
+      detaljUiKorak = window.__posleNovogNalogaKorak || 1;
+      window.__posleNovogNalogaKorak = null;
       otvoriDetaljNaloga(rezultat.id);
-      showToast("Korak 1: popuni zapisnik o zatečenom stanju (prijem)");
+      showToast("Korak 1: popuni formu zapisnika o zatečenom stanju");
     }
   } catch (e) { err.textContent = e.message; }
 });
@@ -2560,6 +2562,8 @@ function kompresujSliku(file, maxW = 1280, quality = 0.72) {
   });
 }
 
+let detaljUiKorak = null; // 1 | 2 | 3 — koja forma se prikazuje u detalju
+
 async function otvoriDetaljNaloga(id) {
   const body = document.getElementById("nalog-detalj-body");
   body.innerHTML = `<p class="muted">Učitavanje...</p>`;
@@ -2571,16 +2575,20 @@ async function otvoriDetaljNaloga(id) {
     document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
     return;
   }
+  if (detaljUiKorak == null) {
+    const k = nalogTokKorak(detaljNalog);
+    detaljUiKorak = k === 4 || k === 0 ? 3 : (k || 1);
+  }
   renderDetalj();
 }
 
-/** Otvori detalj i skroluj na korak (1=zatečeno, 2=rad, 3=završeno) */
+/** Otvori detalj na konkretnoj formi (1=zatečeno, 2=radni nalog, 3=završeni) */
 async function otvoriDetaljNalogaNaKorak(id, korakCilj) {
-  window.__nalogScrollKorak = korakCilj;
+  detaljUiKorak = korakCilj;
   await otvoriDetaljNaloga(id);
 }
 
-/** Dugme sa dashboarda: otvori postojeći nalog na prijemu ili napravi novi */
+/** Dugme sa dashboarda: otvori formu zapisnika o zatečenom stanju */
 function otvoriZapisnikZatecenoSaDashboarda() {
   const kandidati = (nalozi || []).filter((n) => nalogTokKorak(n) === 1 && !String(n.id).startsWith("privremeno-"));
   if (kandidati.length === 1) {
@@ -2593,7 +2601,7 @@ function otvoriZapisnikZatecenoSaDashboarda() {
       .map((n, i) => `${i + 1}. ${n.brojNaloga} — ${n.naslov}`)
       .join("\n");
     const odg = prompt(
-      `Izaberi nalog za zapisnik o zatečenom stanju (unesite broj 1–${Math.min(12, kandidati.length)}):\n\n${izbor}\n\nIli ostavi prazno za novi nalog.`
+      `Izaberi nalog za zapisnik o zatečenom stanju (1–${Math.min(12, kandidati.length)}):\n\n${izbor}\n\nPrazno = novi nalog.`
     );
     if (odg == null) return;
     const idx = parseInt(String(odg).trim(), 10) - 1;
@@ -2602,7 +2610,8 @@ function otvoriZapisnikZatecenoSaDashboarda() {
       return;
     }
   }
-  showToast("Prvo sačuvaj nalog — zatim se otvara zapisnik o zatečenom stanju");
+  showToast("Sačuvaj nalog — otvara se forma zapisnika o zatečenom stanju");
+  window.__posleNovogNalogaKorak = 1;
   otvoriModalNalog();
 }
 
@@ -2692,8 +2701,210 @@ function renderDetalj() {
 
   const imaZateceno = !!n.zapZatecenoAt;
   const imaZavrsenoZap = !!n.zapZavrsenoZapAt;
-  const tokKorak = nalogTokKorak(n);
-  const korak = tokKorak === 4 ? 3 : (tokKorak || 1);
+  let prikazKorak = detaljUiKorak || 1;
+  if (!imaZateceno && !zatvoren) prikazKorak = 1;
+  if (prikazKorak < 1) prikazKorak = 1;
+  if (prikazKorak > 3) prikazKorak = 3;
+  detaljUiKorak = prikazKorak;
+
+  const metaBlok = `
+    <div class="detail-meta">
+      <div><div class="k">Klijent</div><div class="v">${esc(n.klijent?.nazivIliIme || "—")}</div></div>
+      <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
+      <div><div class="k">Kategorija / usluga</div><div class="v">${esc(n.kategorija?.naziv || "")} · ${esc(n.tipUsluge?.naziv || "")}</div></div>
+      <div><div class="k">Tehničar</div><div class="v">${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "Nedodeljen"}</div></div>
+    </div>`;
+
+  const formaZateceno = `
+    <div id="sekcija-korak-1">
+      <div class="section-title">Forma: zapisnik o zatečenom stanju (prijem)</div>
+      <p class="muted" style="margin:0 0 10px;">Popuni ovu formu prvo. Tek posle toga otvara se forma radnog naloga.</p>
+      ${metaBlok}
+      <div class="field-row">
+        <div class="field"><label>Mesto</label>
+          <input id="d-zap-mesto" value="${esc(n.zapMesto || n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
+        <div class="field"><label>Vreme dolaska</label>
+          <input id="d-zap-dolazak" value="${esc(n.zapVremeDolaska || "")}" placeholder="npr. 08:30" ${zatvoren ? "disabled" : ""}></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Km / brojač pri dolasku</label>
+          <input id="d-zap-km-dolazak" type="number" value="${n.zapKmDolaska != null ? n.zapKmDolaska : (n.kmPriPrijemu != null ? n.kmPriPrijemu : "")}" ${zatvoren ? "disabled" : ""}></div>
+        <div class="field"><label>Stanje goriva</label>
+          <select id="d-gorivo" ${zatvoren ? "disabled" : ""}>
+            ${["", "prazan", "1/4", "1/2", "3/4", "pun"].map((g) =>
+              `<option value="${g}" ${(n.stanjeGoriva || "") === g ? "selected" : ""}>${g || "— nepoznato —"}</option>`
+            ).join("")}
+          </select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Zatečeno stanje</label>
+          <select id="d-zap-stanje-zat" ${zatvoren ? "disabled" : ""}>
+            <option value="">— izaberi —</option>
+            <option value="ispravan" ${n.zapStanjeZateceno === "ispravan" ? "selected" : ""}>Ispravno</option>
+            <option value="neispravan" ${n.zapStanjeZateceno === "neispravan" ? "selected" : ""}>Neispravno</option>
+          </select>
+        </div>
+        <div class="field"><label>Garancija</label>
+          <select id="d-zap-garancija" ${zatvoren ? "disabled" : ""}>
+            <option value="">— izaberi —</option>
+            <option value="garantni" ${n.zapGarancija === "garantni" ? "selected" : ""}>U garantnom roku</option>
+            <option value="vangaranti" ${n.zapGarancija === "vangaranti" ? "selected" : ""}>Vangaranti</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Opis zatečenog stanja / reklamacija</label>
+        <textarea id="d-zap-opis-zat" ${zatvoren ? "disabled" : ""}>${esc(n.zapOpisZateceno || n.opis || "")}</textarea></div>
+      <div class="prilog-actions" style="margin-top:12px;">
+        ${zatvoren ? "" : `<button class="btn btn-primary" id="d-zap-zat-sacuvaj" style="width:auto;">Sačuvaj i nastavi na formu radnog naloga</button>`}
+        <button class="btn" id="d-zap-zat-stampaj" style="width:auto;">Štampaj zapisnik o zatečenom stanju</button>
+      </div>
+    </div>`;
+
+  const formaRadni = `
+    <div id="sekcija-korak-2">
+      <div class="section-title">Forma: radni nalog</div>
+      <p class="muted" style="margin:0 0 10px;">Unesi radove, delove i priloge. Kad završiš, idi na zapisnik o završenim radovima.</p>
+      ${metaBlok}
+      <div class="prilog-actions" style="margin-top:0;">
+        <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;">Štampaj radni nalog (papirni obrazac)</button>
+        ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
+        ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps" title="${esc(TIP.GPS)}">Snimi ${tip("GPS", TIP.GPS)}</button>`}
+      </div>
+      <div class="status-actions">
+        ${["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"].map((s) =>
+          `<button class="btn btn-sm ${n.status === s ? "btn-primary" : ""}" data-status="${s}" style="width:auto;" ${(!imaZateceno && (s === "u_toku" || s === "ceka_delove" || s === "zavrseno")) ? "disabled" : ""}>${statusLabel(s)}</button>`
+        ).join("")}
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Tehničar</label>
+          <select id="d-tehnicar" ${jeDispecer() && !zatvoren ? "" : "disabled"}>
+            <option value="">— nedodeljen —</option>${tehnicarSelect}
+          </select>
+        </div>
+        <div class="field"><label>Zakazano za</label>
+          <input id="d-zakazano" type="datetime-local" value="${uDatetimeLocal(n.zakazanoZa)}" ${zatvoren ? "disabled" : ""}>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Prioritet</label>
+          <select id="d-prioritet" ${zatvoren ? "disabled" : ""}>
+            <option value="normalan" ${n.prioritet === "normalan" ? "selected" : ""}>Normalan</option>
+            <option value="hitno" ${n.prioritet === "hitno" ? "selected" : ""}>Hitno</option>
+            <option value="kritican" ${n.prioritet === "kritican" ? "selected" : ""}>Kritičan</option>
+          </select>
+        </div>
+        <div class="field"><label>Lokacija</label>
+          <select id="d-lokacija" ${zatvoren ? "disabled" : ""}>
+            <option value="radionica" ${n.lokacijaTip === "radionica" ? "selected" : ""}>Radionica</option>
+            <option value="teren" ${n.lokacijaTip === "teren" ? "selected" : ""}>Teren</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} rok</label>
+        <input id="d-sla" type="datetime-local" value="${uDatetimeLocal(n.slaRok)}" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Adresa intervencije</label>
+        <input id="d-adresa" value="${esc(n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Beleška sa terena (rad)</label>
+        <textarea id="d-opis" ${zatvoren ? "disabled" : ""}>${esc(n.opis || "")}</textarea></div>
+      ${zatvoren ? "" : `<div class="modal-actions" style="margin-top:0;"><button class="btn btn-primary" id="d-sacuvaj" style="width:auto;">Sačuvaj izmene naloga</button></div>`}
+
+      <div class="section-title">Checklist (${checklist.filter((c) => c.zavrseno).length}/${checklist.length})</div>
+      <div id="d-checklist">${checklistHtml}</div>
+
+      <div class="section-title">Fotografije</div>
+      <div class="prilog-grid">${galerija}</div>
+      ${zatvoren ? "" : `
+        <div class="prilog-actions">
+          <label class="btn btn-sm" style="margin:0; cursor:pointer;">
+            Foto pre
+            <input type="file" accept="image/*" capture="environment" data-foto-tip="foto_pre" hidden>
+          </label>
+          <label class="btn btn-sm" style="margin:0; cursor:pointer;">
+            Foto posle
+            <input type="file" accept="image/*" capture="environment" data-foto-tip="foto_posle" hidden>
+          </label>
+        </div>
+      `}
+
+      <div class="section-title">Potpisi</div>
+      <div style="display:flex;flex-wrap:wrap;gap:16px;">
+        ${potpisBlok("Odgovorno lice servisa", potpisServ, "potpis_servisa")}
+        ${potpisBlok("Naručilac radova", potpisNar, "potpis_klijenta")}
+        ${potpisBlok("Vozilo / opremu preuzeo", potpisPreuzeo, "potpis_preuzeo")}
+      </div>
+
+      <div class="section-title">USLUGE (rad)</div>
+      <table><thead><tr><th>Usluga</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th>Vrednost</th><th></th></tr></thead><tbody>${uslugeRedovi}</tbody></table>
+      ${zatvoren ? "" : `
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Opis usluge</label><input id="d-usluga-opis" placeholder="npr. Zamena ulja i filtera"></div>
+          <div class="field"><label title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</label><input id="d-usluga-kol" type="number" min="0.1" step="0.1" value="1"></div>
+          <div class="field"><label>Cena</label><input id="d-usluga-cena" type="number" min="0" step="0.01" value="0"></div>
+        </div>
+        <button class="btn btn-sm" id="d-dodaj-uslugu">Dodaj uslugu</button>
+      `}
+
+      <div class="section-title">DELOVI</div>
+      <table><thead><tr><th>Deo</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
+      ${zatvoren ? "" : `
+        <div class="field-row" style="margin-top:10px;">
+          <div class="field"><label>Magacin</label><select id="d-magacin"><option value="">Automatski (vozilo → centralni)</option>${magacinOpts}</select></div>
+          <div class="field"><label>Dodaj deo</label><select id="d-deo">${deloviOptions || "<option value=''>Nema delova u magacinu</option>"}</select></div>
+        </div>
+        <div class="field"><label>Količina</label><input id="d-kol" type="number" min="1" value="1"></div>
+        <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
+        <button class="btn btn-sm" id="d-rezervisi-deo">Rezerviši (bez skidanja)</button>
+      `}
+
+      <div class="prilog-actions" style="margin-top:16px;">
+        <button type="button" class="btn" id="d-nazad-zateceno" style="width:auto;">← Nazad na zapisnik o zatečenom stanju</button>
+        <button type="button" class="btn btn-primary" id="d-nastavi-zavrseno" style="width:auto;background:#3E7A45;border-color:#3E7A45;">
+          Nastavi na zapisnik o završenim radovima →
+        </button>
+      </div>
+    </div>`;
+
+  const formaZavrseno = `
+    <div id="sekcija-korak-3">
+      <div class="section-title">Forma: zapisnik o završenim radovima</div>
+      <p class="muted" style="margin:0 0 10px;">Popuni na kraju posla, pa zatvori nalog.</p>
+      ${metaBlok}
+      <div class="field-row">
+        <div class="field"><label>Radno vreme</label>
+          <input id="d-zap-radno" value="${esc(n.zapRadnoVreme || "")}" placeholder="npr. 2h 30min" ${zatvoren ? "disabled" : ""}></div>
+        <div class="field"><label>Vreme odlaska</label>
+          <input id="d-zap-odlazak" value="${esc(n.zapVremeOdlaska || "")}" placeholder="npr. 11:00" ${zatvoren ? "disabled" : ""}></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Km / brojač pri odlasku</label>
+          <input id="d-zap-km-odlazak" type="number" value="${n.zapKmOdlaska != null ? n.zapKmOdlaska : ""}" ${zatvoren ? "disabled" : ""}></div>
+        <div class="field"><label>Proizvod ostavljen</label>
+          <select id="d-zap-stanje" ${zatvoren ? "disabled" : ""}>
+            <option value="">— izaberi —</option>
+            <option value="ispravan" ${n.zapStanjeProizvoda === "ispravan" ? "selected" : ""}>Ispravno stanje</option>
+            <option value="neispravan" ${n.zapStanjeProizvoda === "neispravan" ? "selected" : ""}>Neispravno stanje</option>
+          </select>
+        </div>
+      </div>
+      <div class="field"><label>Još potrebno uraditi</label>
+        <textarea id="d-zap-jos" ${zatvoren ? "disabled" : ""}>${esc(n.zapJosPotrebno || "")}</textarea></div>
+      <div class="prilog-actions" style="margin-top:12px;">
+        <button type="button" class="btn" id="d-nazad-radni" style="width:auto;">← Nazad na radni nalog</button>
+        ${zatvoren ? "" : `<button class="btn btn-primary" id="d-zap-zav-sacuvaj" style="width:auto;">Sačuvaj zapisnik o završenim radovima</button>`}
+        <button class="btn" id="d-zap-zav-stampaj" style="width:auto;">Štampaj zapisnik o završenim radovima</button>
+      </div>
+      ${zatvoren ? "" : `
+        <div class="prilog-actions" style="margin-top:8px;">
+          <button type="button" class="btn btn-primary" id="d-zatvori-nalog" style="width:auto;" ${imaZavrsenoZap ? "" : "disabled title=\"Prvo sačuvaj zapisnik\""}>
+            Zatvori nalog (status Završeno)
+          </button>
+        </div>
+      `}
+      ${n.racun ? `<p class="muted" style="margin-top:12px;">Račun: ${esc(n.racun.brojRacuna)} (${esc(n.racun.status)})</p>` : ""}
+      <div class="section-title">Istorija statusa</div>
+      ${istorija || `<p class="muted">Nema istorije.</p>`}
+    </div>`;
 
   document.getElementById("nalog-detalj-body").innerHTML = `
     <div class="detail-head">
@@ -2705,226 +2916,41 @@ function renderDetalj() {
     </div>
 
     <div class="workflow">
-      <div class="workflow-step ${imaZateceno ? "done" : ""} ${korak === 1 ? "active" : ""}">
-        <span class="num">1.</span> Zatečeno stanje
-        <span class="st">${imaZateceno ? "Sačuvano " + fmtDate(n.zapZatecenoAt) : "Prvo popuni pri dolasku"}</span>
+      <div class="workflow-step ${imaZateceno ? "done" : ""} ${prikazKorak === 1 ? "active" : ""}" data-ui-korak="1" style="cursor:pointer;">
+        <span class="num">1.</span> Zapisnik o zatečenom stanju
+        <span class="st">${imaZateceno ? "Sačuvano " + fmtDate(n.zapZatecenoAt) : "Forma prijema"}</span>
       </div>
-      <div class="workflow-step ${imaZateceno && !zatvoren ? "active" : ""} ${n.status === "u_toku" || n.status === "ceka_delove" ? "done" : ""} ${korak === 2 ? "active" : ""}">
+      <div class="workflow-step ${imaZateceno ? "done" : ""} ${prikazKorak === 2 ? "active" : ""}" data-ui-korak="2" style="cursor:${imaZateceno || zatvoren ? "pointer" : "not-allowed"};">
         <span class="num">2.</span> Radni nalog
-        <span class="st">${imaZateceno ? "Delovi, usluge, foto, status" : "Otključava se posle koraka 1"}</span>
+        <span class="st">${imaZateceno ? "Forma rada" : "Posle koraka 1"}</span>
       </div>
-      <div class="workflow-step ${imaZavrsenoZap ? "done" : ""} ${korak === 3 ? "active" : ""}">
-        <span class="num">3.</span> Završeni posao
-        <span class="st">${imaZavrsenoZap ? "Sačuvano " + fmtDate(n.zapZavrsenoZapAt) : "Popuni kad je posao gotov"}</span>
+      <div class="workflow-step ${imaZavrsenoZap ? "done" : ""} ${prikazKorak === 3 ? "active" : ""}" data-ui-korak="3" style="cursor:${imaZateceno || zatvoren ? "pointer" : "not-allowed"};">
+        <span class="num">3.</span> Zapisnik o završenim radovima
+        <span class="st">${imaZavrsenoZap ? "Sačuvano " + fmtDate(n.zapZavrsenoZapAt) : "Forma na kraju"}</span>
       </div>
     </div>
 
-    <div class="prilog-actions" style="margin:0 0 14px;">
-      <button type="button" class="btn btn-primary" id="d-otvori-zateceno" style="width:auto;background:#2B6E73;border-color:#2B6E73;">
-        Otvori zapisnik o zatečenom stanju
-      </button>
-      <button type="button" class="btn" id="d-otvori-zavrseno-zap" style="width:auto;">
-        Otvori zapisnik o završenim radovima
-      </button>
-    </div>
-
-    <div class="detail-meta">
-      <div><div class="k">Klijent</div><div class="v">${esc(n.klijent?.nazivIliIme || "—")}</div></div>
-      <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
-      <div><div class="k">Kategorija / usluga</div><div class="v">${esc(n.kategorija?.naziv || "")} · ${esc(n.tipUsluge?.naziv || "")}</div></div>
-      <div><div class="k">Tehničar</div><div class="v">${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "Nedodeljen"}</div></div>
-      <div><div class="k" title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} rok</div><div class="v">${n.slaRok ? fmtDate(n.slaRok) : "—"}</div></div>
-      <div><div class="k" title="${esc(TIP.GPS)}">${tip("GPS", TIP.GPS)}</div><div class="v">${n.geoLat != null ? `<a href="https://www.openstreetmap.org/?mlat=${n.geoLat}&mlon=${n.geoLng}#map=16/${n.geoLat}/${n.geoLng}" target="_blank" rel="noopener">${Number(n.geoLat).toFixed(5)}, ${Number(n.geoLng).toFixed(5)}</a> (${fmtDate(n.geoAt)})` : "—"}</div></div>
-    </div>
-
-    <div class="section-title" id="sekcija-korak-1">1. Zapisnik o zatečenom stanju</div>
-    <p class="muted" style="margin:0 0 10px;">Popuni pri dolasku / prijemu — pre početka radova.</p>
-    <div class="field-row">
-      <div class="field"><label>Mesto</label>
-        <input id="d-zap-mesto" value="${esc(n.zapMesto || n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Vreme dolaska</label>
-        <input id="d-zap-dolazak" value="${esc(n.zapVremeDolaska || "")}" placeholder="npr. 08:30" ${zatvoren ? "disabled" : ""}></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Km / brojač pri dolasku</label>
-        <input id="d-zap-km-dolazak" type="number" value="${n.zapKmDolaska != null ? n.zapKmDolaska : (n.kmPriPrijemu != null ? n.kmPriPrijemu : "")}" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Stanje goriva</label>
-        <select id="d-gorivo" ${zatvoren ? "disabled" : ""}>
-          ${["", "prazan", "1/4", "1/2", "3/4", "pun"].map((g) =>
-            `<option value="${g}" ${(n.stanjeGoriva || "") === g ? "selected" : ""}>${g || "— nepoznato —"}</option>`
-          ).join("")}
-        </select>
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Zatečeno stanje</label>
-        <select id="d-zap-stanje-zat" ${zatvoren ? "disabled" : ""}>
-          <option value="">— izaberi —</option>
-          <option value="ispravan" ${n.zapStanjeZateceno === "ispravan" ? "selected" : ""}>Ispravno</option>
-          <option value="neispravan" ${n.zapStanjeZateceno === "neispravan" ? "selected" : ""}>Neispravno</option>
-        </select>
-      </div>
-      <div class="field"><label>Garancija</label>
-        <select id="d-zap-garancija" ${zatvoren ? "disabled" : ""}>
-          <option value="">— izaberi —</option>
-          <option value="garantni" ${n.zapGarancija === "garantni" ? "selected" : ""}>U garantnom roku</option>
-          <option value="vangaranti" ${n.zapGarancija === "vangaranti" ? "selected" : ""}>Vangaranti</option>
-        </select>
-      </div>
-    </div>
-    <div class="field"><label>Opis zatečenog stanja / reklamacija</label>
-      <textarea id="d-zap-opis-zat" ${zatvoren ? "disabled" : ""}>${esc(n.zapOpisZateceno || n.opis || "")}</textarea></div>
-    <div class="prilog-actions" style="margin-top:8px;">
-      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-zat-sacuvaj" style="width:auto;">Sačuvaj zapisnik o zatečenom stanju</button>`}
-      <button class="btn btn-sm" id="d-zap-zat-stampaj" style="width:auto;">Štampaj zatečeno stanje</button>
-    </div>
-
-    <div class="section-title" id="sekcija-korak-2">2. Radni nalog</div>
-    <p class="muted" style="margin:0 0 10px;">${imaZateceno ? "Unesi radove, delove i priloge — pa štampaj papirni nalog." : "Najpre sačuvaj korak 1 (zatečeno stanje)."}</p>
-    <div class="prilog-actions" style="margin-top:0;">
-      <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;" ${imaZateceno ? "" : "disabled title=\"Prvo zatečeno stanje\""}>Štampaj radni nalog (papirni obrazac)</button>
-      ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
-      ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps" title="${esc(TIP.GPS)} — snimi lokaciju na nalog, servisera i vozilo">Snimi ${tip("GPS", TIP.GPS)}</button>`}
-    </div>
-    <div class="status-actions">
-      ${["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"].map((s) =>
-        `<button class="btn btn-sm ${n.status === s ? "btn-primary" : ""}" data-status="${s}" style="width:auto;">${statusLabel(s)}</button>`
-      ).join("")}
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Tehničar</label>
-        <select id="d-tehnicar" ${jeDispecer() && !zatvoren ? "" : "disabled"}>
-          <option value="">— nedodeljen —</option>${tehnicarSelect}
-        </select>
-      </div>
-      <div class="field"><label>Zakazano za</label>
-        <input id="d-zakazano" type="datetime-local" value="${uDatetimeLocal(n.zakazanoZa)}" ${zatvoren ? "disabled" : ""}>
-      </div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Prioritet</label>
-        <select id="d-prioritet" ${zatvoren ? "disabled" : ""}>
-          <option value="normalan" ${n.prioritet === "normalan" ? "selected" : ""}>Normalan</option>
-          <option value="hitno" ${n.prioritet === "hitno" ? "selected" : ""}>Hitno</option>
-          <option value="kritican" ${n.prioritet === "kritican" ? "selected" : ""}>Kritičan</option>
-        </select>
-      </div>
-      <div class="field"><label>Lokacija</label>
-        <select id="d-lokacija" ${zatvoren ? "disabled" : ""}>
-          <option value="radionica" ${n.lokacijaTip === "radionica" ? "selected" : ""}>Radionica</option>
-          <option value="teren" ${n.lokacijaTip === "teren" ? "selected" : ""}>Teren</option>
-        </select>
-      </div>
-    </div>
-    <div class="field"><label title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} rok</label>
-      <input id="d-sla" type="datetime-local" value="${uDatetimeLocal(n.slaRok)}" ${zatvoren ? "disabled" : ""}></div>
-    <div class="field"><label>Adresa intervencije</label>
-      <input id="d-adresa" value="${esc(n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
-    <div class="field"><label>Beleška sa terena (rad)</label>
-      <textarea id="d-opis" ${zatvoren ? "disabled" : ""}>${esc(n.opis || "")}</textarea></div>
-    ${zatvoren ? "" : `<div class="modal-actions" style="margin-top:0;"><button class="btn btn-primary" id="d-sacuvaj" style="width:auto;">Sačuvaj izmene naloga</button></div>`}
-
-    <div class="section-title">Checklist (${checklist.filter((c) => c.zavrseno).length}/${checklist.length})</div>
-    <div id="d-checklist">${checklistHtml}</div>
-
-    <div class="section-title">Fotografije</div>
-    <div class="prilog-grid">${galerija}</div>
-    ${zatvoren ? "" : `
-      <div class="prilog-actions">
-        <label class="btn btn-sm" style="margin:0; cursor:pointer;">
-          Foto pre
-          <input type="file" accept="image/*" capture="environment" data-foto-tip="foto_pre" hidden>
-        </label>
-        <label class="btn btn-sm" style="margin:0; cursor:pointer;">
-          Foto posle
-          <input type="file" accept="image/*" capture="environment" data-foto-tip="foto_posle" hidden>
-        </label>
-      </div>
-      <p class="muted">Na telefonu otvara kameru. Slike se kompresuju pre slanja.</p>
-    `}
-
-    <div class="section-title">Potpisi (kao na radnom nalogu)</div>
-    <div style="display:flex;flex-wrap:wrap;gap:16px;">
-      ${potpisBlok("Odgovorno lice servisa", potpisServ, "potpis_servisa")}
-      ${potpisBlok("Naručilac radova", potpisNar, "potpis_klijenta")}
-      ${potpisBlok("Vozilo / opremu preuzeo", potpisPreuzeo, "potpis_preuzeo")}
-    </div>
-
-    <div class="section-title">USLUGE (rad) — kao na papirnom nalogu</div>
-    <table><thead><tr><th>Usluga</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th>Vrednost</th><th></th></tr></thead><tbody>${uslugeRedovi}</tbody></table>
-    ${zatvoren ? "" : `
-      <div class="field-row" style="margin-top:10px;">
-        <div class="field"><label>Opis usluge</label><input id="d-usluga-opis" placeholder="npr. Zamena ulja i filtera"></div>
-        <div class="field"><label title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</label><input id="d-usluga-kol" type="number" min="0.1" step="0.1" value="1"></div>
-        <div class="field"><label>Cena</label><input id="d-usluga-cena" type="number" min="0" step="0.01" value="0"></div>
-      </div>
-      <button class="btn btn-sm" id="d-dodaj-uslugu">Dodaj uslugu</button>
-    `}
-
-    <div class="section-title">DELOVI</div>
-    <table><thead><tr><th>Deo</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
-    ${zatvoren ? "" : `
-      <div class="field-row" style="margin-top:10px;">
-        <div class="field"><label>Magacin</label><select id="d-magacin"><option value="">Automatski (vozilo → centralni)</option>${magacinOpts}</select></div>
-        <div class="field"><label>Dodaj deo</label><select id="d-deo">${deloviOptions || "<option value=''>Nema delova u magacinu</option>"}</select></div>
-      </div>
-      <div class="field"><label>Količina</label><input id="d-kol" type="number" min="1" value="1"></div>
-      <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
-      <button class="btn btn-sm" id="d-rezervisi-deo">Rezerviši (bez skidanja)</button>
-    `}
-    <div class="section-title" id="sekcija-korak-3">3. Zapisnik o završenom poslu</div>
-    <p class="muted" style="margin:0 0 10px;">Popuni kad su radovi gotovi — pre zatvaranja naloga.</p>
-    <div class="field-row">
-      <div class="field"><label>Radno vreme</label>
-        <input id="d-zap-radno" value="${esc(n.zapRadnoVreme || "")}" placeholder="npr. 2h 30min" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Vreme odlaska</label>
-        <input id="d-zap-odlazak" value="${esc(n.zapVremeOdlaska || "")}" placeholder="npr. 11:00" ${zatvoren ? "disabled" : ""}></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Km / brojač pri odlasku</label>
-        <input id="d-zap-km-odlazak" type="number" value="${n.zapKmOdlaska != null ? n.zapKmOdlaska : ""}" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Proizvod ostavljen</label>
-        <select id="d-zap-stanje" ${zatvoren ? "disabled" : ""}>
-          <option value="">— izaberi —</option>
-          <option value="ispravan" ${n.zapStanjeProizvoda === "ispravan" ? "selected" : ""}>Ispravno stanje</option>
-          <option value="neispravan" ${n.zapStanjeProizvoda === "neispravan" ? "selected" : ""}>Neispravno stanje</option>
-        </select>
-      </div>
-    </div>
-    <div class="field"><label>Još potrebno uraditi</label>
-      <textarea id="d-zap-jos" ${zatvoren ? "disabled" : ""}>${esc(n.zapJosPotrebno || "")}</textarea></div>
-    <div class="prilog-actions" style="margin-top:8px;">
-      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-zav-sacuvaj" style="width:auto;">Sačuvaj zapisnik o završenom poslu</button>`}
-      <button class="btn btn-sm" id="d-zap-zav-stampaj" style="width:auto;">Štampaj završeni posao</button>
-    </div>
-
-    ${n.racun ? `<p class="muted" style="margin-top:12px;">Račun: ${esc(n.racun.brojRacuna)} (${esc(n.racun.status)})</p>` : ""}
-    <div class="section-title">Istorija statusa</div>
-    ${istorija || `<p class="muted">Nema istorije.</p>`}
+    ${prikazKorak === 1 ? formaZateceno : ""}
+    ${prikazKorak === 2 ? formaRadni : ""}
+    ${prikazKorak === 3 ? formaZavrseno : ""}
   `;
 
-  document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
-  const scrollKorak = window.__nalogScrollKorak || korak;
-  window.__nalogScrollKorak = null;
-  setTimeout(() => {
-    const sekcija = document.getElementById(`sekcija-korak-${scrollKorak}`);
-    if (sekcija) sekcija.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, 60);
+  document.getElementById("zatvori-detalj").onclick = () => {
+    detaljUiKorak = null;
+    document.getElementById("overlay-nalog-detalj").classList.remove("open");
+  };
 
-  const dOtvoriZat = document.getElementById("d-otvori-zateceno");
-  if (dOtvoriZat) {
-    dOtvoriZat.onclick = () => {
-      document.getElementById("sekcija-korak-1")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      otvoriPdf(`/nalozi/${n.id}/zapisnik/zateceno`);
-    };
-  }
-  const dOtvoriZav = document.getElementById("d-otvori-zavrseno-zap");
-  if (dOtvoriZav) {
-    dOtvoriZav.onclick = () => {
-      document.getElementById("sekcija-korak-3")?.scrollIntoView({ behavior: "smooth", block: "start" });
-      otvoriPdf(`/nalozi/${n.id}/zapisnik/zavrseno`);
-    };
-  }
+  document.querySelectorAll("#nalog-detalj-body [data-ui-korak]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const k = Number(el.dataset.uiKorak);
+      if (k >= 2 && !n.zapZatecenoAt && !zatvoren) {
+        showToast("Prvo sačuvaj zapisnik o zatečenom stanju");
+        return;
+      }
+      detaljUiKorak = k;
+      renderDetalj();
+    });
+  });
 
   const pdfBtn = document.getElementById("d-pdf");
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
@@ -2955,8 +2981,48 @@ function renderDetalj() {
           }),
         });
         detaljNalog = await api(`/nalozi/${n.id}`);
+        detaljUiKorak = 2;
         renderDetalj();
-        showToast("Zapisnik o zatečenom stanju sačuvan");
+        showToast("Zapisnik sačuvan — sada forma radnog naloga");
+      } catch (e) { showToast(e.message); }
+    };
+  }
+
+  const nastaviZav = document.getElementById("d-nastavi-zavrseno");
+  if (nastaviZav) {
+    nastaviZav.onclick = () => {
+      detaljUiKorak = 3;
+      renderDetalj();
+    };
+  }
+  const nazadZat = document.getElementById("d-nazad-zateceno");
+  if (nazadZat) {
+    nazadZat.onclick = () => {
+      detaljUiKorak = 1;
+      renderDetalj();
+    };
+  }
+  const nazadRad = document.getElementById("d-nazad-radni");
+  if (nazadRad) {
+    nazadRad.onclick = () => {
+      detaljUiKorak = 2;
+      renderDetalj();
+    };
+  }
+  const zatvoriNalogBtn = document.getElementById("d-zatvori-nalog");
+  if (zatvoriNalogBtn) {
+    zatvoriNalogBtn.onclick = async () => {
+      try {
+        await api(`/nalozi/${n.id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ noviStatus: "zavrseno", forsiraj: !n.zapZavrsenoZapAt }),
+        });
+        await ucitajSve();
+        detaljNalog = await api(`/nalozi/${n.id}`);
+        detaljUiKorak = 3;
+        renderDetalj();
+        render();
+        showToast("Nalog zatvoren (Završeno)");
       } catch (e) { showToast(e.message); }
     };
   }
@@ -2977,8 +3043,9 @@ function renderDetalj() {
           }),
         });
         detaljNalog = await api(`/nalozi/${n.id}`);
+        detaljUiKorak = 3;
         renderDetalj();
-        showToast("Zapisnik o završenom poslu sačuvan");
+        showToast("Zapisnik o završenim radovima sačuvan");
       } catch (e) { showToast(e.message); }
     };
   }
