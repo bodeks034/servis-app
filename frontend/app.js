@@ -697,10 +697,15 @@ function render() {
     const gotovo = filtered.filter((n) => nalogTokKorak(n) === 4);
     const kritican = filtered.filter((n) => n.prioritet === "kritican" && n.status !== "zavrseno").length;
 
-    function dashCard(n) {
+    function dashCard(n, korak) {
       const teh = n.dodeljeniTehnicar
         ? `${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}`
         : "Nedodeljen";
+      const need = korak === 1
+        ? "Sledeće: zapisnik o zatečenom stanju (prijem)"
+        : korak === 2
+          ? "Sledeće: radovi na nalogu"
+          : "Sledeće: zatvori nalog (Završeno)";
       return `<div class="dash-card" data-id="${n.id}">
         <div class="id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}${n.__queued ? ' · čeka slanje' : ""}</div>
         <div class="title">${esc(n.naslov)}</div>
@@ -712,10 +717,25 @@ function render() {
           <span class="badge ${catBadgeClass[n.kategorijaId] || "c1"}">${esc(n.kategorija?.naziv || "")}</span>
           ${n.prioritet !== "normalan" ? `<span class="badge ${n.prioritet}">${n.prioritet === "kritican" ? "Kritično" : "Hitno"}</span>` : ""}
         </div>
+        <div class="need">${need}</div>
       </div>`;
     }
 
-    let html = `<p class="dash-intro"><strong>Tok posla:</strong> 1) zapisnik o zatečenom stanju (prijem) → 2) radni nalog → 3) zapisnik o završenim radovima. Klikni karticu da nastaviš od trenutnog koraka.</p>`;
+    let html = `
+    <div class="dash-steps">
+      <div class="dash-step-pill k1">
+        <strong>1) Zapisnik o zatečenom stanju (prijem)</strong>
+        Popuni pri dolasku — pre rada. Trenutno: <b>${k1.length}</b>
+      </div>
+      <div class="dash-step-pill k2">
+        <strong>2) Radni nalog</strong>
+        Delovi, usluge, foto. Trenutno: <b>${k2.length}</b>
+      </div>
+      <div class="dash-step-pill k3">
+        <strong>3) Zapisnik o završenim radovima</strong>
+        Na kraju posla. Trenutno: <b>${k3.length}</b>
+      </div>
+    </div>`;
 
     html += `<div class="stats-row">
       <div class="stat-card"><div class="label">1 · Čeka prijem</div><div class="value">${k1.length}</div></div>
@@ -731,16 +751,24 @@ function render() {
     html += `</div>`;
 
     html += `<div class="dash-flow">
-      <div class="dash-col k1">
+      <div class="dash-col k1" id="dash-korak-1">
         <div class="dash-col-head">
           <div>
             <span class="num">KORAK 1</span>
-            <h3>Zatečeno stanje / prijem</h3>
-            <span class="hint">Popuni zapisnik o zatečenom stanju pre rada</span>
+            <h3>Zapisnik o zatečenom stanju (prijem)</h3>
+            <span class="hint">Prvi dokument — snimi šta je zatečeno pre rada</span>
           </div>
           <span class="count">${k1.length}</span>
         </div>
-        <div class="dash-col-body">${k1.length ? k1.map(dashCard).join("") : `<div class="empty">Nema naloga na prijemu</div>`}</div>
+        <div class="dash-col-body">
+          ${k1.length
+            ? k1.map((n) => dashCard(n, 1)).join("")
+            : `<div class="dash-empty">
+                Nema naloga koji čekaju prijem.<br>
+                Napravi novi nalog — pojaviće se ovde dok ne sačuvaš zapisnik o zatečenom stanju.
+                <button type="button" class="btn btn-sm btn-primary" id="dash-novi-prijem" style="width:auto;">+ Novi nalog (prijem)</button>
+              </div>`}
+        </div>
       </div>
       <div class="dash-col k2">
         <div class="dash-col-head">
@@ -751,7 +779,7 @@ function render() {
           </div>
           <span class="count">${k2.length}</span>
         </div>
-        <div class="dash-col-body">${k2.length ? k2.map(dashCard).join("") : `<div class="empty">Nema naloga u radu</div>`}</div>
+        <div class="dash-col-body">${k2.length ? k2.map((n) => dashCard(n, 2)).join("") : `<div class="dash-empty">Nema naloga u radu</div>`}</div>
       </div>
       <div class="dash-col k3">
         <div class="dash-col-head">
@@ -762,14 +790,14 @@ function render() {
           </div>
           <span class="count">${k3.length}</span>
         </div>
-        <div class="dash-col-body">${k3.length ? k3.map(dashCard).join("") : `<div class="empty">Nema naloga spremnih za zatvaranje</div>`}</div>
+        <div class="dash-col-body">${k3.length ? k3.map((n) => dashCard(n, 3)).join("") : `<div class="dash-empty">Nema naloga spremnih za zatvaranje</div>`}</div>
       </div>
     </div>`;
 
     if (gotovo.length) {
       html += `<div class="section-title">Nedavno završeno (${gotovo.length})</div>
         <div class="dash-col-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;padding:0;">
-          ${gotovo.slice(0, 12).map(dashCard).join("")}
+          ${gotovo.slice(0, 12).map((n) => dashCard(n, 4)).join("")}
         </div>`;
     }
 
@@ -780,6 +808,8 @@ function render() {
     content.querySelectorAll(".dash-card[data-id]").forEach((card) => {
       card.addEventListener("click", () => otvoriDetaljNaloga(card.dataset.id));
     });
+    const noviPrijem = document.getElementById("dash-novi-prijem");
+    if (noviPrijem) noviPrijem.onclick = () => otvoriModalNalog();
   }
 
   else if (currentView === "mapa") {
