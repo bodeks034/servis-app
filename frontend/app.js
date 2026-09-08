@@ -170,6 +170,24 @@ function statusLabel(s) {
   return { novo: "Novo", u_toku: "U toku", ceka_delove: "Čeka delove", zavrseno: "Završeno", otkazano: "Otkazano" }[s] || s;
 }
 
+function nalogTokKorak(n) {
+  if (n.status === "otkazano") return 0;
+  if (!n.zapZatecenoAt) return 1; // prijem / zatečeno
+  if (!n.zapZavrsenoZapAt) return 2; // radni nalog u toku
+  if (n.status !== "zavrseno") return 3; // zapisnik gotov, čeka zatvaranje
+  return 4; // potpuno završeno
+}
+
+function nalogTokLabel(korak) {
+  return {
+    1: "Prijem / zatečeno stanje",
+    2: "Radni nalog",
+    3: "Zapisnik o završenim radovima",
+    4: "Završeno",
+  }[korak] || "";
+}
+
+
 /** Skraćenica sa objašnjenjem na hover */
 function tip(tekst, znacenje) {
   return `<span class="abbr" title="${esc(znacenje)}">${esc(tekst)}</span>`;
@@ -658,7 +676,7 @@ function render() {
   const btnNew = document.getElementById("btn-new");
 
   if (currentView === "nalozi") {
-    document.getElementById("view-title").textContent = "Radni nalozi";
+    document.getElementById("view-title").textContent = "Dashboard";
     btnNew.textContent = "+ Novi nalog";
     btnNew.classList.remove("hidden");
     btnNew.onclick = otvoriModalNalog;
@@ -673,15 +691,37 @@ function render() {
       return matchesCat && matchesQ;
     });
 
+    const k1 = filtered.filter((n) => nalogTokKorak(n) === 1);
+    const k2 = filtered.filter((n) => nalogTokKorak(n) === 2);
+    const k3 = filtered.filter((n) => nalogTokKorak(n) === 3);
+    const gotovo = filtered.filter((n) => nalogTokKorak(n) === 4);
     const kritican = filtered.filter((n) => n.prioritet === "kritican" && n.status !== "zavrseno").length;
-    const uToku = filtered.filter((n) => n.status === "u_toku").length;
-    const zavrseno = filtered.filter((n) => n.status === "zavrseno").length;
 
-    let html = `<div class="stats-row">
-      <div class="stat-card"><div class="label">Ukupno naloga</div><div class="value">${filtered.length}</div></div>
-      <div class="stat-card danger"><div class="label">Kritični (aktivni)</div><div class="value">${kritican}</div></div>
-      <div class="stat-card"><div class="label">U toku</div><div class="value">${uToku}</div></div>
-      <div class="stat-card success"><div class="label">Završeno</div><div class="value">${zavrseno}</div></div>
+    function dashCard(n) {
+      const teh = n.dodeljeniTehnicar
+        ? `${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}`
+        : "Nedodeljen";
+      return `<div class="dash-card" data-id="${n.id}">
+        <div class="id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}${n.__queued ? ' · čeka slanje' : ""}</div>
+        <div class="title">${esc(n.naslov)}</div>
+        <div class="meta">
+          <span>${esc(n.klijent?.nazivIliIme || "—")}</span>
+          <span>${teh}</span>
+        </div>
+        <div class="meta" style="margin-top:4px;">
+          <span class="badge ${catBadgeClass[n.kategorijaId] || "c1"}">${esc(n.kategorija?.naziv || "")}</span>
+          ${n.prioritet !== "normalan" ? `<span class="badge ${n.prioritet}">${n.prioritet === "kritican" ? "Kritično" : "Hitno"}</span>` : ""}
+        </div>
+      </div>`;
+    }
+
+    let html = `<p class="dash-intro"><strong>Tok posla:</strong> 1) zapisnik o zatečenom stanju (prijem) → 2) radni nalog → 3) zapisnik o završenim radovima. Klikni karticu da nastaviš od trenutnog koraka.</p>`;
+
+    html += `<div class="stats-row">
+      <div class="stat-card"><div class="label">1 · Čeka prijem</div><div class="value">${k1.length}</div></div>
+      <div class="stat-card"><div class="label">2 · U radu</div><div class="value">${k2.length}</div></div>
+      <div class="stat-card success"><div class="label">3 · Završni zapisnik</div><div class="value">${k3.length}</div></div>
+      <div class="stat-card danger"><div class="label">Kritični</div><div class="value">${kritican}</div></div>
     </div>`;
 
     html += `<div><span class="cat-chip ${categoryFilter === "sve" ? "active" : ""}" data-cat="sve">Sve kategorije</span>`;
@@ -690,32 +730,55 @@ function render() {
     });
     html += `</div>`;
 
-    const statusi = [["novo", "Novo"], ["u_toku", "U toku"], ["ceka_delove", "Čeka delove"], ["zavrseno", "Završeno"]];
-    html += `<div class="board">`;
-    for (const [key, label] of statusi) {
-      const items = filtered.filter((n) => n.status === key);
-      html += `<div><div class="col-head"><span class="title">${label}</span><span class="count">${items.length}</span></div>
-        <div class="col-drop" data-status="${key}">`;
-      if (items.length === 0) html += `<div class="empty" style="padding:16px 0;">Nema naloga</div>`;
-      for (const n of items) {
-        const teh = n.dodeljeniTehnicar ? `${esc(n.dodeljeniTehnicar.ime)} ${esc(n.dodeljeniTehnicar.prezime)}` : "";
-        html += `<div class="card ${key}" draggable="true" data-id="${n.id}">
-          <div class="card-id">${esc(n.brojNaloga)} · ${esc(n.tipUsluge?.naziv || "")} ${n.__queued ? '<span class="badge queued">čeka slanje</span>' : ""}</div>
-          <div class="card-title">${esc(n.naslov)}</div>
-          <div class="card-meta"><span>${esc(n.klijent?.nazivIliIme || "—")}</span>
-            <span class="badge ${catBadgeClass[n.kategorijaId] || "c1"}">${esc(n.kategorija?.naziv || "")}</span></div>
-          <div class="card-meta" style="margin-top:6px;">
-            ${n.prioritet !== "normalan" ? `<span class="badge ${n.prioritet}">${n.prioritet === "kritican" ? "Kritično" : "Hitno"}</span>` : "<span></span>"}
-            <span>${teh}</span>
-          </div></div>`;
-      }
-      html += `</div></div>`;
+    html += `<div class="dash-flow">
+      <div class="dash-col k1">
+        <div class="dash-col-head">
+          <div>
+            <span class="num">KORAK 1</span>
+            <h3>Zatečeno stanje / prijem</h3>
+            <span class="hint">Popuni zapisnik o zatečenom stanju pre rada</span>
+          </div>
+          <span class="count">${k1.length}</span>
+        </div>
+        <div class="dash-col-body">${k1.length ? k1.map(dashCard).join("") : `<div class="empty">Nema naloga na prijemu</div>`}</div>
+      </div>
+      <div class="dash-col k2">
+        <div class="dash-col-head">
+          <div>
+            <span class="num">KORAK 2</span>
+            <h3>Radni nalog</h3>
+            <span class="hint">Delovi, usluge, foto, status — radovi u toku</span>
+          </div>
+          <span class="count">${k2.length}</span>
+        </div>
+        <div class="dash-col-body">${k2.length ? k2.map(dashCard).join("") : `<div class="empty">Nema naloga u radu</div>`}</div>
+      </div>
+      <div class="dash-col k3">
+        <div class="dash-col-head">
+          <div>
+            <span class="num">KORAK 3</span>
+            <h3>Zapisnik o završenim radovima</h3>
+            <span class="hint">Sačuvan završni zapisnik — zatvori nalog</span>
+          </div>
+          <span class="count">${k3.length}</span>
+        </div>
+        <div class="dash-col-body">${k3.length ? k3.map(dashCard).join("") : `<div class="empty">Nema naloga spremnih za zatvaranje</div>`}</div>
+      </div>
+    </div>`;
+
+    if (gotovo.length) {
+      html += `<div class="section-title">Nedavno završeno (${gotovo.length})</div>
+        <div class="dash-col-body" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:8px;padding:0;">
+          ${gotovo.slice(0, 12).map(dashCard).join("")}
+        </div>`;
     }
-    html += `</div>`;
+
     content.innerHTML = html;
-    attachDrag();
     document.querySelectorAll(".cat-chip").forEach((chip) => {
       chip.addEventListener("click", () => { categoryFilter = chip.dataset.cat; render(); });
+    });
+    content.querySelectorAll(".dash-card[data-id]").forEach((card) => {
+      card.addEventListener("click", () => otvoriDetaljNaloga(card.dataset.id));
     });
   }
 
@@ -1491,7 +1554,7 @@ function uputstvoHtml() {
         <li><strong>Tim</strong> — dodaj tehničare (ako radiš u više osoba).</li>
         <li><strong>Klijenti</strong> — unesi firmu ili fizičko lice.</li>
         <li><strong>Oprema i vozila</strong> — poveži uređaj / vozilo sa klijentom.</li>
-        <li><strong>Radni nalozi</strong> — otvori posao, dodeli tehničara, prati status.</li>
+        <li><strong>Dashboard</strong> — tok posla u 3 koraka: prijem → rad → završni zapisnik.</li>
         <li><strong>Magacin</strong> — delovi na stanju; utrošak ide sa naloga.</li>
         <li><strong>Računi</strong> — kad je nalog završen, izdaj račun sa PDV-om.</li>
       </ol>
@@ -1520,15 +1583,18 @@ function uputstvoHtml() {
     </div>
 
     <div class="guide-sec" id="g-nalozi">
-      <h3>4. Radni nalozi</h3>
-      <p>Glavni ekran je <strong>tabla</strong> sa kolonama: Novo → U toku → Čeka delove → Završeno.</p>
+      <h3>4. Dashboard — tok posla</h3>
+      <p>Početni ekran (<strong>Dashboard</strong>) prati posao u 3 koraka:</p>
+      <ol>
+        <li><strong>Zatečeno stanje / prijem</strong> — prvo sačuvaj zapisnik o zatečenom stanju.</li>
+        <li><strong>Radni nalog</strong> — delovi, usluge, foto, status rada.</li>
+        <li><strong>Zapisnik o završenim radovima</strong> — pa zatvori nalog (Završeno).</li>
+      </ol>
       <ul>
         <li><strong>+ Novi nalog</strong> — naslov, klijent, oprema, usluga, prioritet, tehničar, termin.</li>
-        <li><strong>Prevuci karticu</strong> u drugu kolonu da promeniš status (na telefonu koristi dugmad u detalju).</li>
-        <li><strong>Klik na karticu</strong> — detalj: status, foto pre/posle, potpis klijenta, delovi, PDF.</li>
-        <li>Filter čipova iznad table filtrira po kategoriji.</li>
+        <li><strong>Klik na karticu</strong> — otvara detalj na trenutnom koraku.</li>
+        <li>Filter čipova filtrira po kategoriji.</li>
       </ul>
-      <div class="tip">Na telefonu table prevuci ustranu da vidiš sve kolone.</div>
     </div>
 
     <div class="guide-sec" id="g-magacin">
@@ -2522,7 +2588,8 @@ function renderDetalj() {
 
   const imaZateceno = !!n.zapZatecenoAt;
   const imaZavrsenoZap = !!n.zapZavrsenoZapAt;
-  const korak = !imaZateceno ? 1 : (!imaZavrsenoZap && n.status !== "zavrseno" ? 2 : (imaZavrsenoZap ? 3 : 2));
+  const tokKorak = nalogTokKorak(n);
+  const korak = tokKorak === 4 ? 3 : (tokKorak || 1);
 
   document.getElementById("nalog-detalj-body").innerHTML = `
     <div class="detail-head">
@@ -2557,7 +2624,7 @@ function renderDetalj() {
       <div><div class="k" title="${esc(TIP.GPS)}">${tip("GPS", TIP.GPS)}</div><div class="v">${n.geoLat != null ? `<a href="https://www.openstreetmap.org/?mlat=${n.geoLat}&mlon=${n.geoLng}#map=16/${n.geoLat}/${n.geoLng}" target="_blank" rel="noopener">${Number(n.geoLat).toFixed(5)}, ${Number(n.geoLng).toFixed(5)}</a> (${fmtDate(n.geoAt)})` : "—"}</div></div>
     </div>
 
-    <div class="section-title">1. Zapisnik o zatečenom stanju</div>
+    <div class="section-title" id="sekcija-korak-1">1. Zapisnik o zatečenom stanju</div>
     <p class="muted" style="margin:0 0 10px;">Popuni pri dolasku / prijemu — pre početka radova.</p>
     <div class="field-row">
       <div class="field"><label>Mesto</label>
@@ -2599,7 +2666,7 @@ function renderDetalj() {
       <button class="btn btn-sm" id="d-zap-zat-stampaj" style="width:auto;">Štampaj zatečeno stanje</button>
     </div>
 
-    <div class="section-title">2. Radni nalog</div>
+    <div class="section-title" id="sekcija-korak-2">2. Radni nalog</div>
     <p class="muted" style="margin:0 0 10px;">${imaZateceno ? "Unesi radove, delove i priloge — pa štampaj papirni nalog." : "Najpre sačuvaj korak 1 (zatečeno stanje)."}</p>
     <div class="prilog-actions" style="margin-top:0;">
       <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;" ${imaZateceno ? "" : "disabled title=\"Prvo zatečeno stanje\""}>Štampaj radni nalog (papirni obrazac)</button>
@@ -2692,7 +2759,7 @@ function renderDetalj() {
       <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
       <button class="btn btn-sm" id="d-rezervisi-deo">Rezerviši (bez skidanja)</button>
     `}
-    <div class="section-title">3. Zapisnik o završenom poslu</div>
+    <div class="section-title" id="sekcija-korak-3">3. Zapisnik o završenom poslu</div>
     <p class="muted" style="margin:0 0 10px;">Popuni kad su radovi gotovi — pre zatvaranja naloga.</p>
     <div class="field-row">
       <div class="field"><label>Radno vreme</label>
@@ -2724,6 +2791,10 @@ function renderDetalj() {
   `;
 
   document.getElementById("zatvori-detalj").onclick = () => document.getElementById("overlay-nalog-detalj").classList.remove("open");
+  setTimeout(() => {
+    const sekcija = document.getElementById(`sekcija-korak-${korak}`);
+    if (sekcija) sekcija.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, 60);
   const pdfBtn = document.getElementById("d-pdf");
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
   const histBtn = document.getElementById("d-istorija-opreme");

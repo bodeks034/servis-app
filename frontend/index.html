@@ -180,6 +180,24 @@
   .mapa-legend .voz::before{background:#D98A1E;}
   .mapa-legend .nal::before{background:#B23A32;}
   @media (max-width:860px){#mapa-wrap{grid-template-columns:1fr;}#mapa-list{max-height:180px;}}
+  .dash-flow{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin:0 0 14px;}
+  .dash-col{background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:280px;display:flex;flex-direction:column;}
+  .dash-col-head{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:flex-start;gap:8px;}
+  .dash-col-head .num{font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--accent);}
+  .dash-col-head h3{margin:2px 0 0;font-size:14px;font-weight:700;}
+  .dash-col-head .hint{display:block;margin-top:4px;font-size:11px;color:var(--ink-soft);font-weight:400;}
+  .dash-col-head .count{background:var(--bg);border-radius:12px;padding:2px 8px;font-size:12px;font-weight:700;}
+  .dash-col-body{padding:10px;flex:1;display:flex;flex-direction:column;gap:8px;}
+  .dash-col.k1 .dash-col-head{border-top:3px solid #2B6E73;}
+  .dash-col.k2 .dash-col-head{border-top:3px solid var(--accent);}
+  .dash-col.k3 .dash-col-head{border-top:3px solid #3E7A45;}
+  .dash-card{border:1px solid var(--line);border-radius:8px;padding:10px 12px;cursor:pointer;background:#fff;}
+  .dash-card:hover{border-color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.06);}
+  .dash-card .id{font-family:var(--mono);font-size:11px;color:var(--ink-soft);}
+  .dash-card .title{font-weight:600;margin:4px 0 6px;font-size:13px;}
+  .dash-card .meta{display:flex;justify-content:space-between;gap:6px;font-size:11px;color:var(--ink-soft);flex-wrap:wrap;}
+  .dash-intro{margin:0 0 12px;font-size:13px;color:var(--ink-soft);}
+  @media (max-width:900px){.dash-flow{grid-template-columns:1fr;}}
   .history-item{font-size:12.5px; color:var(--ink-soft); padding:4px 0; border-bottom:1px solid var(--line);}
   .api-hint{display:none;}
   .detail-meta{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; background:var(--bg); border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:13px;}
@@ -327,7 +345,7 @@
   <div class="sidebar">
     <div class="brand"><div class="mark">terenski servis</div><h1>Servis&nbsp;Dispečer</h1></div>
     <div class="who" id="who-info"></div>
-    <div class="nav-item active" data-view="nalozi" data-staff="1"><span>Radni nalozi</span></div>
+    <div class="nav-item active" data-view="nalozi" data-staff="1"><span>Dashboard</span></div>
     <div class="nav-item" data-view="mapa" data-staff="1" title="GPS mapa servisera i vozila"><span>Mapa GPS</span></div>
     <div class="nav-item" data-view="kalendar" data-staff="1"><span>Kalendar</span></div>
     <div class="nav-item" data-view="podsetnici" data-staff="1"><span>Podsetnici</span></div>
@@ -349,7 +367,7 @@
 
   <div class="main">
     <div class="topbar">
-      <h2 id="view-title">Radni nalozi</h2>
+      <h2 id="view-title">Dashboard</h2>
       <input class="search" id="search" placeholder="Pretraga...">
       <span class="hidden" id="queue-indicator" style="font-size:12px; color:var(--warn-ink); background:var(--warn-bg); padding:5px 10px; border-radius:12px; font-weight:600;"></span>
       <button class="btn btn-sm hidden" id="btn-install-pwa" style="width:auto;">Instaliraj app</button>

@@ -1,7 +1,7 @@
 // Service Worker — kešira samo statičke fajlove sa istog domena.
 // Cross-origin API (Vercel backend) SE NE PREKIDA — inače telefon vidi lažnu poruku "nema interneta".
 
-const CACHE_NAME = "servis-app-v19";
+const CACHE_NAME = "servis-app-v20";
 const APP_SHELL = [
   "./",
   "./index.html",
