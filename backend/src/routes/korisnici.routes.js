@@ -23,7 +23,7 @@ const publicSelect = {
   createdAt: true,
 };
 
-const DOZVOLJENE_ULOGE = ["admin", "dispecer", "tehnicar", "klijent"];
+const DOZVOLJENE_ULOGE = ["admin", "dispecer", "tehnicar", "klijent", "magacioner", "knjigovodja"];
 const VESTINE_OPCIJE = ["vozila", "namestaj", "bela_tehnika", "masine", "poljoprivreda", "elektronika", "klima", "hidraulika"];
 
 // GET /api/korisnici — tim firme (bez lozinke)

@@ -24,8 +24,12 @@ function saStanjem(deo) {
 }
 
 router.get("/", asyncHandler(async (req, res) => {
+  const where = { firmaId: req.user.firmaId };
+  if (req.query.barkod) {
+    where.barkod = String(req.query.barkod).trim();
+  }
   const delovi = await prisma.deo.findMany({
-    where: { firmaId: req.user.firmaId },
+    where,
     include: {
       stanjeZaliha: {
         include: { magacin: { select: { id: true, naziv: true, tip: true } } },
@@ -36,8 +40,21 @@ router.get("/", asyncHandler(async (req, res) => {
   res.json(delovi.map(saStanjem));
 }));
 
+router.get("/barkod/:kod", asyncHandler(async (req, res) => {
+  const deo = await prisma.deo.findFirst({
+    where: { firmaId: req.user.firmaId, barkod: String(req.params.kod).trim() },
+    include: {
+      stanjeZaliha: {
+        include: { magacin: { select: { id: true, naziv: true, tip: true } } },
+      },
+    },
+  });
+  if (!deo) throw new HttpError(404, "Deo sa tim barkodom nije pronađen.");
+  res.json(saStanjem(deo));
+}));
+
 router.post("/", asyncHandler(async (req, res) => {
-  const { sifra, naziv, jedinicaMere, nabavnaCena, prodajnaCena, minZaliha } = req.body;
+  const { sifra, naziv, jedinicaMere, nabavnaCena, prodajnaCena, minZaliha, barkod } = req.body;
   if (!sifra || !naziv) {
     throw new HttpError(400, "Šifra i naziv su obavezni.");
   }
@@ -51,6 +68,7 @@ router.post("/", asyncHandler(async (req, res) => {
       nabavnaCena: nabavnaCena || null,
       prodajnaCena: prodajnaCena || null,
       minZaliha: minZaliha || 0,
+      barkod: barkod ? String(barkod).trim() : null,
     },
     include: {
       stanjeZaliha: {
@@ -59,6 +77,34 @@ router.post("/", asyncHandler(async (req, res) => {
     },
   });
   res.status(201).json(saStanjem(deo));
+}));
+
+router.patch("/:id", asyncHandler(async (req, res) => {
+  const postojeci = await prisma.deo.findFirst({
+    where: { id: req.params.id, firmaId: req.user.firmaId },
+  });
+  if (!postojeci) throw new HttpError(404, "Deo nije pronađen.");
+
+  const { sifra, naziv, jedinicaMere, nabavnaCena, prodajnaCena, minZaliha, barkod } = req.body;
+  const data = {};
+  if (sifra !== undefined) data.sifra = String(sifra).trim();
+  if (naziv !== undefined) data.naziv = String(naziv).trim();
+  if (jedinicaMere !== undefined) data.jedinicaMere = jedinicaMere || null;
+  if (nabavnaCena !== undefined) data.nabavnaCena = nabavnaCena;
+  if (prodajnaCena !== undefined) data.prodajnaCena = prodajnaCena;
+  if (minZaliha !== undefined) data.minZaliha = minZaliha || 0;
+  if (barkod !== undefined) data.barkod = barkod ? String(barkod).trim() : null;
+
+  const deo = await prisma.deo.update({
+    where: { id: postojeci.id },
+    data,
+    include: {
+      stanjeZaliha: {
+        include: { magacin: { select: { id: true, naziv: true, tip: true } } },
+      },
+    },
+  });
+  res.json(saStanjem(deo));
 }));
 
 // POST /api/delovi/:id/prijem — ulaz robe u centralni magacin

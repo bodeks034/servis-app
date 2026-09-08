@@ -60,6 +60,9 @@ function mapOpremaBody(body) {
   if (body.kilometraza !== undefined) data.kilometraza = brojIliNull(body.kilometraza);
   if (body.satnice !== undefined) data.satnice = brojIliNull(body.satnice);
   if (body.snagaKw !== undefined) data.snagaKw = brojIliNull(body.snagaKw);
+  if (body.zapreminaCcm !== undefined) data.zapreminaCcm = brojIliNull(body.zapreminaCcm);
+  if (body.godinaProizvodnje !== undefined) data.godinaProizvodnje = brojIliNull(body.godinaProizvodnje);
+  if (body.brojMotora !== undefined) data.brojMotora = body.brojMotora ? String(body.brojMotora).trim() : null;
   return data;
 }
 

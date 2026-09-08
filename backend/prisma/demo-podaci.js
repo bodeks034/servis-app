@@ -14,13 +14,25 @@ const prisma = new PrismaClient();
 const MARKER = "[DEMO]";
 
 async function main() {
+  const trazenaFirma = process.argv[2] || "";
   const admin = await prisma.korisnik.findFirst({
-    where: { uloga: "admin", aktivan: true },
+    where: {
+      uloga: "admin",
+      aktivan: true,
+      ...(trazenaFirma
+        ? { firma: { naziv: { contains: trazenaFirma, mode: "insensitive" } } }
+        : {}),
+    },
     orderBy: { createdAt: "desc" },
     include: { firma: true },
   });
-  if (!admin) throw new Error("Nema registrovane firme/admina. Prvo se prijavi u app.");
-
+  if (!admin) {
+    throw new Error(
+      trazenaFirma
+        ? `Nema admina za firmu koja sadrži "${trazenaFirma}".`
+        : "Nema registrovane firme/admina. Prvo se prijavi u app."
+    );
+  }
   const firmaId = admin.firmaId;
   console.log(`Firma: ${admin.firma.naziv} (${firmaId})`);
 

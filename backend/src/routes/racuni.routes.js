@@ -5,6 +5,8 @@ const asyncHandler = require("../lib/asyncHandler");
 const { HttpError } = require("../lib/errors");
 const { sledeciBrojRacuna } = require("../lib/brojevi");
 const { racunHtml } = require("../lib/pdfHtml");
+const { racunUblXml, posaljiNaSef } = require("../lib/sef");
+const { upisiAudit } = require("../lib/audit");
 
 const router = express.Router();
 router.use(requireAuth);
@@ -59,7 +61,11 @@ router.post("/", asyncHandler(async (req, res) => {
 
   const nalog = await prisma.radniNalog.findFirst({
     where: { id: nalogId, firmaId: req.user.firmaId },
-    include: { utroseniDelovi: { include: { deo: true } }, klijent: true },
+    include: {
+      utroseniDelovi: { include: { deo: true } },
+      usluge: { orderBy: { redosled: "asc" } },
+      klijent: true,
+    },
   });
 
   if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
@@ -74,6 +80,15 @@ router.post("/", asyncHandler(async (req, res) => {
 
   const stavkeData = [];
   let redosled = 0;
+  for (const u of nalog.usluge || []) {
+    stavkeData.push({
+      tip: "rad",
+      opis: u.opis,
+      kolicina: Number(u.kolicina),
+      cena: Number(u.cena),
+      redosled: redosled++,
+    });
+  }
   const rad = Number(cenaRada || 0);
   if (rad > 0) {
     stavkeData.push({ tip: "rad", opis: "Rad / usluga", kolicina: 1, cena: rad, redosled: redosled++ });
@@ -88,7 +103,7 @@ router.post("/", asyncHandler(async (req, res) => {
     });
   }
   if (stavkeData.length === 0) {
-    throw new HttpError(400, "Račun mora imati bar jednu stavku (rad ili delovi).");
+    throw new HttpError(400, "Račun mora imati bar jednu stavku (usluge ili delovi).");
   }
 
   const iznosBezPdv = round2(
@@ -122,6 +137,43 @@ router.post("/", asyncHandler(async (req, res) => {
   });
 
   res.status(201).json(racun);
+}));
+
+router.get("/:id/sef", asyncHandler(async (req, res) => {
+  const racun = await prisma.racun.findFirst({
+    where: { id: req.params.id, firmaId: req.user.firmaId },
+    include: {
+      ...racunInclude,
+      firma: { select: { naziv: true, pib: true, adresa: true, maticniBroj: true } },
+    },
+  });
+  if (!racun) throw new HttpError(404, "Račun nije pronađen.");
+  const xml = racunUblXml(racun, racun.firma, racun.klijent);
+  const rezultat = await posaljiNaSef(xml);
+
+  await prisma.racun.update({
+    where: { id: racun.id },
+    data: {
+      sefStatus: rezultat.status,
+      sefRef: rezultat.ref,
+    },
+  });
+
+  await upisiAudit({
+    firmaId: req.user.firmaId,
+    korisnikId: req.user.id,
+    akcija: "sef_export",
+    entitet: "racun",
+    entitetId: racun.id,
+    detalj: rezultat.status,
+  });
+
+  if (req.query.format === "json") {
+    return res.json({ ...rezultat, xml });
+  }
+  res.setHeader("Content-Type", "application/xml; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${racun.brojRacuna}-ubl.xml"`);
+  res.send(xml);
 }));
 
 router.patch("/:id/status", asyncHandler(async (req, res) => {

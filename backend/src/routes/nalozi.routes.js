@@ -9,11 +9,15 @@ const { centralniMagacin, magacinZaUtrošak } = require("../lib/magacin");
 const { uploadPrilog, obrisiFajlAkoJeUStorage } = require("../lib/storage");
 const { nalogHtml } = require("../lib/pdfHtml");
 const { stavkeZaTipUsluge, izracunajSlaRok } = require("../lib/checklist");
+const { upisiAudit } = require("../lib/audit");
+const { obavestiOStatusuNaloga, obavestiOZakazivanju } = require("../lib/notifikacije");
 
 const router = express.Router();
 router.use(requireAuth);
 
-const TIP_PRILOGA = ["foto_pre", "foto_posle", "potpis_klijenta", "video", "pdf_izvestaj"];
+const TIP_PRILOGA = [
+  "foto_pre", "foto_posle", "potpis_klijenta", "potpis_servisa", "potpis_preuzeo", "video", "pdf_izvestaj",
+];
 
 const tehnicarSelect = { select: { id: true, ime: true, prezime: true, telefon: true } };
 
@@ -31,6 +35,7 @@ const detaljInclude = {
   istorijaStatusa: { orderBy: { promenjenoAt: "asc" } },
   prilozi: { orderBy: { uploadedAt: "desc" } },
   utroseniDelovi: { include: { deo: true } },
+  usluge: { orderBy: { redosled: "asc" } },
   checklist: { orderBy: { redosled: "asc" } },
   racun: { select: { id: true, brojRacuna: true, status: true, ukupanIznos: true } },
 };
@@ -87,7 +92,7 @@ router.post("/", asyncHandler(async (req, res) => {
   const {
     klijentId, opremaId, kategorijaId, tipUslugeId,
     naslov, opis, prioritet, lokacijaTip, adresaIntervencije,
-    dodeljeniTehnicarId, zakazanoZa, slaRok,
+    dodeljeniTehnicarId, zakazanoZa, slaRok, stanjeGoriva, kmPriPrijemu,
   } = req.body;
 
   if (!klijentId || !opremaId || !kategorijaId || !tipUslugeId || !naslov) {
@@ -155,6 +160,8 @@ router.post("/", asyncHandler(async (req, res) => {
         kreiraoId: req.user.id,
         zakazanoZa: zakazanoZa ? new Date(zakazanoZa) : null,
         slaRok: Number.isNaN(sla.getTime()) ? izracunajSlaRok(prioritetVal) : sla,
+        stanjeGoriva: stanjeGoriva ? String(stanjeGoriva).trim() : null,
+        kmPriPrijemu: kmPriPrijemu != null && kmPriPrijemu !== "" ? parseInt(kmPriPrijemu, 10) : null,
         status: "novo",
         istorijaStatusa: {
           create: { noviStatus: "novo", promenioId: req.user.id },
@@ -163,8 +170,23 @@ router.post("/", asyncHandler(async (req, res) => {
           create: checklistStavke,
         },
       },
-      include: { ...nalogInclude, checklist: { orderBy: { redosled: "asc" } } },
+      include: { ...nalogInclude, checklist: { orderBy: { redosled: "asc" } }, usluge: true },
     });
+  });
+
+  if (nalog.kmPriPrijemu != null) {
+    await prisma.oprema.update({
+      where: { id: nalog.opremaId },
+      data: { kilometraza: nalog.kmPriPrijemu },
+    }).catch(() => {});
+  }
+  await upisiAudit({
+    firmaId: req.user.firmaId,
+    korisnikId: req.user.id,
+    akcija: "kreiranje",
+    entitet: "nalog",
+    entitetId: nalog.id,
+    detalj: nalog.brojNaloga,
   });
 
   res.status(201).json(nalog);
@@ -201,6 +223,55 @@ router.patch("/:id/status", asyncHandler(async (req, res) => {
     where: { id: postojeci.id },
     data,
     include: nalogInclude,
+  });
+
+  await upisiAudit({
+    firmaId: req.user.firmaId,
+    korisnikId: req.user.id,
+    akcija: "status",
+    entitet: "nalog",
+    entitetId: nalog.id,
+    detalj: `${postojeci.status} → ${noviStatus}`,
+  });
+
+  try {
+    await obavestiOStatusuNaloga(nalog, noviStatus);
+  } catch (e) {
+    console.error("notifikacija status:", e.message);
+  }
+
+  res.json(nalog);
+}));
+
+// POST /api/nalozi/:id/geo — GPS lokacija sa terena
+router.post("/:id/geo", asyncHandler(async (req, res) => {
+  const lat = Number(req.body.lat);
+  const lng = Number(req.body.lng);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    throw new HttpError(400, "lat i lng su obavezni.");
+  }
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) {
+    throw new HttpError(400, "Neispravne koordinate.");
+  }
+
+  const postojeci = await nalogFirme(req.params.id, req.user.firmaId);
+  if (req.user.uloga === "tehnicar" && postojeci.dodeljeniTehnicarId !== req.user.id) {
+    throw new HttpError(403, "Ovaj nalog nije dodeljen vama.");
+  }
+
+  const nalog = await prisma.radniNalog.update({
+    where: { id: postojeci.id },
+    data: { geoLat: lat, geoLng: lng, geoAt: new Date() },
+    include: nalogInclude,
+  });
+
+  await upisiAudit({
+    firmaId: req.user.firmaId,
+    korisnikId: req.user.id,
+    akcija: "geo",
+    entitet: "nalog",
+    entitetId: nalog.id,
+    detalj: `${lat.toFixed(5)},${lng.toFixed(5)}`,
   });
 
   res.json(nalog);
@@ -308,7 +379,7 @@ router.patch("/:id", asyncHandler(async (req, res) => {
 
   const {
     naslov, opis, prioritet, lokacijaTip, adresaIntervencije,
-    dodeljeniTehnicarId, zakazanoZa, slaRok,
+    dodeljeniTehnicarId, zakazanoZa, slaRok, stanjeGoriva, kmPriPrijemu,
   } = req.body;
 
   const data = {};
@@ -324,6 +395,14 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   }
   if (slaRok !== undefined) {
     data.slaRok = slaRok ? new Date(slaRok) : null;
+  }
+  if (stanjeGoriva !== undefined) {
+    data.stanjeGoriva = stanjeGoriva ? String(stanjeGoriva).trim() : null;
+  }
+  if (kmPriPrijemu !== undefined) {
+    data.kmPriPrijemu = kmPriPrijemu === "" || kmPriPrijemu == null
+      ? null
+      : parseInt(kmPriPrijemu, 10);
   }
   if (dodeljeniTehnicarId !== undefined) {
     if (req.user.uloga === "tehnicar") {
@@ -345,7 +424,75 @@ router.patch("/:id", asyncHandler(async (req, res) => {
     data,
     include: nalogInclude,
   });
+
+  if (data.kmPriPrijemu != null) {
+    await prisma.oprema.update({
+      where: { id: nalog.opremaId },
+      data: { kilometraza: data.kmPriPrijemu },
+    }).catch(() => {});
+  }
+
+  if (data.zakazanoZa) {
+    try {
+      await obavestiOZakazivanju(nalog);
+    } catch (e) {
+      console.error("notifikacija zakazivanje:", e.message);
+    }
+  }
+
+  await upisiAudit({
+    firmaId: req.user.firmaId,
+    korisnikId: req.user.id,
+    akcija: "izmena",
+    entitet: "nalog",
+    entitetId: nalog.id,
+    detalj: Object.keys(data).join(", "),
+  });
+
   res.json(nalog);
+}));
+
+// POST /api/nalozi/:id/usluge
+router.post("/:id/usluge", asyncHandler(async (req, res) => {
+  const { opis, kolicina, cena } = req.body;
+  if (!opis || cena == null) throw new HttpError(400, "Opis i cena usluge su obavezni.");
+  const nalog = await prisma.radniNalog.findFirst({
+    where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
+  });
+  if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
+  if (nalog.status === "zavrseno" || nalog.status === "otkazano") {
+    throw new HttpError(400, "Nalog je zatvoren.");
+  }
+  const maxRed = await prisma.nalogUsluga.aggregate({
+    where: { nalogId: nalog.id },
+    _max: { redosled: true },
+  });
+  const usluga = await prisma.nalogUsluga.create({
+    data: {
+      nalogId: nalog.id,
+      opis: String(opis).trim(),
+      kolicina: Number(kolicina || 1),
+      cena: Number(cena),
+      redosled: (maxRed._max.redosled || 0) + 1,
+    },
+  });
+  res.status(201).json(usluga);
+}));
+
+router.delete("/:id/usluge/:uslugaId", asyncHandler(async (req, res) => {
+  const nalog = await prisma.radniNalog.findFirst({
+    where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
+  });
+  if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
+  if (nalog.status === "zavrseno" || nalog.status === "otkazano") {
+    throw new HttpError(400, "Nalog je zatvoren.");
+  }
+  const usluga = await prisma.nalogUsluga.findFirst({
+    where: { id: req.params.uslugaId, nalogId: nalog.id },
+  });
+  if (!usluga) throw new HttpError(404, "Usluga nije pronađena.");
+  await prisma.nalogUsluga.delete({ where: { id: usluga.id } });
+  res.json({ ok: true });
 }));
 
 // PATCH /api/nalozi/:id/checklist/:stavkaId
@@ -393,10 +540,10 @@ router.post("/:id/prilozi", asyncHandler(async (req, res) => {
     throw new HttpError(400, "Na otkazanom nalogu se ne mogu dodavati prilozi.");
   }
 
-  // Jedan potpis po nalogu — novi zamenjuje stari
-  if (tip === "potpis_klijenta") {
+  // Jedan potpis po tipu — novi zamenjuje stari
+  if (["potpis_klijenta", "potpis_servisa", "potpis_preuzeo"].includes(tip)) {
     const stari = await prisma.nalogPrilog.findMany({
-      where: { nalogId: nalog.id, tip: "potpis_klijenta" },
+      where: { nalogId: nalog.id, tip },
     });
     for (const s of stari) {
       await obrisiFajlAkoJeUStorage(s.fajlUrl);
@@ -447,8 +594,10 @@ router.get("/:id/pdf", asyncHandler(async (req, res) => {
     include: {
       ...nalogInclude,
       firma: { select: { naziv: true, pib: true, adresa: true } },
+      kreirao: tehnicarSelect,
       prilozi: true,
       utroseniDelovi: { include: { deo: true } },
+      usluge: { orderBy: { redosled: "asc" } },
     },
   });
   if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
