@@ -2153,6 +2153,8 @@ async function osveziMatchingTehnicara() {
 function otvoriModalNalog() {
   const naslov = document.querySelector("#overlay-nalog h3");
   if (naslov) naslov.textContent = "Novi radni nalog";
+  const saveBtn = document.getElementById("save-nalog");
+  if (saveBtn) saveBtn.textContent = "Sačuvaj";
   document.getElementById("f-naslov").value = "";
   document.getElementById("f-opis").value = "";
   document.getElementById("f-adresa").value = "";
@@ -2602,32 +2604,15 @@ async function otvoriDetaljNalogaNaKorak(id, korakCilj) {
   await otvoriDetaljNaloga(id);
 }
 
-/** Dugme: UVEK otvara formu zapisnika o zatečenom stanju (ne formu radnog naloga) */
+/** Dugme: uvek novi prazan zapisnik o zatečenom stanju (ne postojeći nalog) */
 function otvoriZapisnikZatecenoSaDashboarda() {
-  const aktivni = (nalozi || []).filter((n) =>
-    n.status !== "otkazano" &&
-    !String(n.id).startsWith("privremeno-")
-  );
-  // Prvo oni bez zatečenog (prijem), pa ostali aktivni
-  const cekajuPrijem = aktivni.filter((n) => !n.zapZatecenoAt && n.status !== "zavrseno");
-  const ostali = aktivni.filter((n) => n.status !== "zavrseno" && n.zapZatecenoAt);
-  const lista = cekajuPrijem.length ? cekajuPrijem : ostali;
-
-  if (lista.length === 0) {
-    window.__posleNovogNalogaKorak = 1;
-    otvoriModalNalog();
-    const naslov = document.querySelector("#overlay-nalog h3");
-    if (naslov) naslov.textContent = "Novi nalog → zatim zapisnik o zatečenom stanju";
-    showToast("Sačuvaj nalog — odmah se otvara forma zapisnika o zatečenom stanju");
-    return;
-  }
-
-  // Bez prompt-a: otvori prvi nalog na formi zapisnika (korak 1)
-  const nalog = lista[0];
-  otvoriDetaljNalogaNaKorak(nalog.id, 1);
-  if (lista.length > 1) {
-    showToast(`Zapisnik: ${nalog.brojNaloga}. Ostale otvori klikom na karticu.`);
-  }
+  window.__posleNovogNalogaKorak = 1;
+  otvoriModalNalog();
+  const naslov = document.querySelector("#overlay-nalog h3");
+  if (naslov) naslov.textContent = "Novi zapisnik o zatečenom stanju (prijem)";
+  const saveBtn = document.getElementById("save-nalog");
+  if (saveBtn) saveBtn.textContent = "Sačuvaj i otvori prazan zapisnik";
+  showToast("Popuni nalog (klijent, oprema) — zatim se otvara prazna forma zapisnika");
 }
 
 function renderDetalj() {
