@@ -7,7 +7,7 @@ const { containsText } = require("../lib/search");
 const { sledeciBrojNaloga } = require("../lib/brojevi");
 const { centralniMagacin, magacinZaUtrošak } = require("../lib/magacin");
 const { uploadPrilog, obrisiFajlAkoJeUStorage } = require("../lib/storage");
-const { nalogHtml } = require("../lib/pdfHtml");
+const { nalogHtml, zapisnikHtml } = require("../lib/pdfHtml");
 const { stavkeZaTipUsluge, izracunajSlaRok } = require("../lib/checklist");
 const { upisiAudit } = require("../lib/audit");
 const { obavestiOStatusuNaloga, obavestiOZakazivanju } = require("../lib/notifikacije");
@@ -380,6 +380,8 @@ router.patch("/:id", asyncHandler(async (req, res) => {
   const {
     naslov, opis, prioritet, lokacijaTip, adresaIntervencije,
     dodeljeniTehnicarId, zakazanoZa, slaRok, stanjeGoriva, kmPriPrijemu,
+    zapMesto, zapRadnoVreme, zapVremeDolaska, zapKmDolaska,
+    zapVremeOdlaska, zapKmOdlaska, zapStanjeProizvoda, zapGarancija, zapJosPotrebno,
   } = req.body;
 
   const data = {};
@@ -403,6 +405,25 @@ router.patch("/:id", asyncHandler(async (req, res) => {
     data.kmPriPrijemu = kmPriPrijemu === "" || kmPriPrijemu == null
       ? null
       : parseInt(kmPriPrijemu, 10);
+  }
+  if (zapMesto !== undefined) data.zapMesto = zapMesto ? String(zapMesto).trim() : null;
+  if (zapRadnoVreme !== undefined) data.zapRadnoVreme = zapRadnoVreme ? String(zapRadnoVreme).trim() : null;
+  if (zapVremeDolaska !== undefined) data.zapVremeDolaska = zapVremeDolaska ? String(zapVremeDolaska).trim() : null;
+  if (zapVremeOdlaska !== undefined) data.zapVremeOdlaska = zapVremeOdlaska ? String(zapVremeOdlaska).trim() : null;
+  if (zapJosPotrebno !== undefined) data.zapJosPotrebno = zapJosPotrebno ? String(zapJosPotrebno).trim() : null;
+  if (zapKmDolaska !== undefined) {
+    data.zapKmDolaska = zapKmDolaska === "" || zapKmDolaska == null ? null : parseInt(zapKmDolaska, 10);
+  }
+  if (zapKmOdlaska !== undefined) {
+    data.zapKmOdlaska = zapKmOdlaska === "" || zapKmOdlaska == null ? null : parseInt(zapKmOdlaska, 10);
+  }
+  if (zapStanjeProizvoda !== undefined) {
+    data.zapStanjeProizvoda = ["ispravan", "neispravan"].includes(zapStanjeProizvoda)
+      ? zapStanjeProizvoda
+      : null;
+  }
+  if (zapGarancija !== undefined) {
+    data.zapGarancija = ["garantni", "vangaranti"].includes(zapGarancija) ? zapGarancija : null;
   }
   if (dodeljeniTehnicarId !== undefined) {
     if (req.user.uloga === "tehnicar") {
@@ -603,6 +624,23 @@ router.get("/:id/pdf", asyncHandler(async (req, res) => {
   if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(nalogHtml(nalog, nalog.firma));
+}));
+
+// GET /api/nalozi/:id/zapisnik — privremeni zapisnik o izvršenim radovima
+router.get("/:id/zapisnik", asyncHandler(async (req, res) => {
+  const nalog = await prisma.radniNalog.findFirst({
+    where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
+    include: {
+      ...nalogInclude,
+      firma: { select: { naziv: true, pib: true, adresa: true } },
+      prilozi: true,
+      utroseniDelovi: { include: { deo: true } },
+      usluge: { orderBy: { redosled: "asc" } },
+    },
+  });
+  if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(zapisnikHtml(nalog, nalog.firma));
 }));
 
 // GET /api/nalozi/:id

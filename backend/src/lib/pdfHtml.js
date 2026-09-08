@@ -214,4 +214,106 @@ function racunHtml(racun, firma) {
   return htmlShell(`Račun ${racun.brojRacuna}`, body);
 }
 
-module.exports = { nalogHtml, racunHtml };
+function checkMark(uslov) {
+  return uslov ? "☑" : "☐";
+}
+
+function zapisnikHtml(nalog, firma) {
+  const o = nalog.oprema || {};
+  const god = o.godinaProizvodnje || (o.datumKupovine ? new Date(o.datumKupovine).getFullYear() : "");
+  const proizvod = [o.proizvodjac, o.model || o.naziv].filter(Boolean).join(" ") || o.naziv || "";
+  const tehnicar = nalog.dodeljeniTehnicar
+    ? `${nalog.dodeljeniTehnicar.ime} ${nalog.dodeljeniTehnicar.prezime}`
+    : "";
+  const materijal = (nalog.utroseniDelovi || [])
+    .map((d) => `${d.kolicina}× ${d.deo?.naziv || ""}${d.deo?.sifra ? ` (${d.deo.sifra})` : ""}`)
+    .join("; ");
+  const radovi = [
+    nalog.naslov,
+    nalog.opis,
+    ...(nalog.usluge || []).map((u) => `${u.opis}${Number(u.kolicina) !== 1 ? ` ×${u.kolicina}` : ""}`),
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const kmUkupno =
+    nalog.zapKmDolaska != null && nalog.zapKmOdlaska != null
+      ? Math.abs(Number(nalog.zapKmOdlaska) - Number(nalog.zapKmDolaska))
+      : null;
+
+  const potpisNar = (nalog.prilozi || []).find((p) => p.tip === "potpis_klijenta");
+  const potpisServ = (nalog.prilozi || []).find((p) => p.tip === "potpis_servisa");
+
+  const ispravan = nalog.zapStanjeProizvoda === "ispravan";
+  const neispravan = nalog.zapStanjeProizvoda === "neispravan";
+  const garantni = nalog.zapGarancija === "garantni";
+  const vangaranti = nalog.zapGarancija === "vangaranti";
+
+  const body = `
+  <div class="muted center">${esc(firma?.naziv || "Ovlašćeni servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` · ${esc(firma.adresa)}` : ""}</div>
+  <h1>ZAPISNIK<br><span style="font-size:14px;font-weight:600;">O IZVRŠENIM RADOVIMA br. ${esc(nalog.brojNaloga)}</span></h1>
+  <p class="muted center" style="margin:4px 0 12px;">Privremeni / terenski zapisnik servisne službe · ${fmtDay(nalog.zavrsenoAt || nalog.createdAt)}</p>
+
+  <table>
+    <tr><th style="width:32%">Naziv i adresa kupca</th>
+      <td><strong>${esc(nalog.klijent?.nazivIliIme || "")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}<br>Tel: ${esc(nalog.klijent?.telefon || "—")}</td></tr>
+    <tr><th>Naziv i tip proizvoda</th><td>${esc(proizvod)}</td></tr>
+    <tr><th>Fabrički broj / god. proizv.</th><td class="mono">${esc(o.serijskiBroj || "—")} / ${esc(god || "—")}</td></tr>
+    <tr><th>Broj šasije (VIN)</th><td class="mono">${esc(o.vin || "—")}</td></tr>
+    <tr><th>Reg. oznaka / tip vozila</th><td class="mono">${esc(o.registracija || "—")} · ${esc(o.naziv || "")}</td></tr>
+  </table>
+
+  <h2>Kratak opis radova</h2>
+  <div class="box" style="min-height:64px;white-space:pre-wrap;">${esc(radovi || "")}</div>
+
+  <h2>Utrošeni materijal</h2>
+  <table>
+    <thead><tr><th class="center">R.b.</th><th>Kataloški br.</th><th>Naziv</th><th class="center">Kol.</th></tr></thead>
+    <tbody>
+      ${(nalog.utroseniDelovi || []).map((d, i) =>
+        `<tr><td class="center">${i + 1}.</td><td class="mono">${esc(d.deo?.sifra || "")}</td><td>${esc(d.deo?.naziv || "")}</td><td class="center mono">${d.kolicina}</td></tr>`
+      ).join("") || `<tr><td colspan="4" class="muted">${esc(materijal || "—")}</td></tr>`}
+    </tbody>
+  </table>
+
+  <h2>Utrošeno vreme i put</h2>
+  <table>
+    <tr><th>Radno vreme</th><td>${esc(nalog.zapRadnoVreme || "")}</td><th>Tehničar</th><td>${esc(tehnicar || "—")}</td></tr>
+    <tr><th>Dolazak</th><td>${esc(nalog.zapVremeDolaska || "")}</td><th>Predeno km (dolazak)</th><td class="mono">${nalog.zapKmDolaska != null ? nalog.zapKmDolaska : ""}</td></tr>
+    <tr><th>Odlazak</th><td>${esc(nalog.zapVremeOdlaska || "")}</td><th>Predeno km (odlazak)</th><td class="mono">${nalog.zapKmOdlaska != null ? nalog.zapKmOdlaska : ""}</td></tr>
+    <tr><th colspan="2">Ukupno pređeno km</th><td colspan="2" class="mono">${kmUkupno != null ? kmUkupno : "—"}</td></tr>
+  </table>
+
+  <p style="margin-top:12px;">Za tačnost izvršenih radova i utrošenog materijala stranka overava svojim potpisom.</p>
+
+  <table style="margin-top:8px;">
+    <tr>
+      <th style="width:40%">Proizvod je ostavljen u</th>
+      <td>${checkMark(ispravan)} ispravnom stanju &nbsp;&nbsp; ${checkMark(neispravan)} neispravnom stanju</td>
+    </tr>
+    <tr>
+      <th>Proizvod je</th>
+      <td>${checkMark(garantni)} u garantnom roku &nbsp;&nbsp; ${checkMark(vangaranti)} u vangarantnom roku</td>
+    </tr>
+  </table>
+
+  <h2>Utvrđeno je da je na proizvodu još potrebno uraditi</h2>
+  <div class="box" style="min-height:56px;white-space:pre-wrap;">${esc(nalog.zapJosPotrebno || "")}</div>
+
+  <p style="margin-top:16px;">U ${esc(nalog.zapMesto || nalog.adresaIntervencije || firma?.adresa || "_______________")}, dana ${fmtDay(nalog.zavrsenoAt || new Date())}</p>
+
+  <div class="sig-row">
+    <div class="sig-box">
+      ${potpisNar ? `<img src="${esc(potpisNar.fajlUrl)}" alt="Za kupca">` : `<div class="sig-line"></div>`}
+      <div>ZA KUPCA</div>
+    </div>
+    <div class="sig-box">
+      ${potpisServ ? `<img src="${esc(potpisServ.fajlUrl)}" alt="Za servis">` : `<div class="sig-line"></div>`}
+      <div>ZA OVLAŠĆENI SERVIS${tehnicar ? `<br><span class="muted">${esc(tehnicar)}</span>` : ""}</div>
+    </div>
+  </div>`;
+
+  return htmlShell(`Zapisnik ${nalog.brojNaloga}`, body);
+}
+
+module.exports = { nalogHtml, racunHtml, zapisnikHtml };

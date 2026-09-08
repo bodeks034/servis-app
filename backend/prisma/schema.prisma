@@ -225,6 +225,16 @@ model RadniNalog {
   geoAt               DateTime?    @map("geo_at")
   stanjeGoriva        String?      @map("stanje_goriva") // prazan | 1/4 | 1/2 | 3/4 | pun
   kmPriPrijemu        Int?         @map("km_pri_prijemu")
+  // Zapisnik o izvršenim radovima (privremeni / terenski)
+  zapMesto            String?      @map("zap_mesto")
+  zapRadnoVreme       String?      @map("zap_radno_vreme")
+  zapVremeDolaska     String?      @map("zap_vreme_dolaska")
+  zapKmDolaska        Int?         @map("zap_km_dolaska")
+  zapVremeOdlaska     String?      @map("zap_vreme_odlaska")
+  zapKmOdlaska        Int?         @map("zap_km_odlaska")
+  zapStanjeProizvoda  String?      @map("zap_stanje_proizvoda") // ispravan | neispravan
+  zapGarancija        String?      @map("zap_garancija") // garantni | vangaranti
+  zapJosPotrebno      String?      @map("zap_jos_potrebno")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 

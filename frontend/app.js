@@ -2424,6 +2424,49 @@ function renderDetalj() {
       <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
       <button class="btn btn-sm" id="d-rezervisi-deo">Rezerviši (bez skidanja)</button>
     `}
+    <div class="section-title">Zapisnik o izvršenim radovima (privremeni)</div>
+    <p class="muted" style="margin:0 0 10px;">Popuni terenske podatke — štampa kao poboljšani obrazac servisne službe.</p>
+    <div class="field-row">
+      <div class="field"><label>Mesto</label>
+        <input id="d-zap-mesto" value="${esc(n.zapMesto || n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Radno vreme</label>
+        <input id="d-zap-radno" value="${esc(n.zapRadnoVreme || "")}" placeholder="npr. 2h 30min" ${zatvoren ? "disabled" : ""}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Vreme dolaska</label>
+        <input id="d-zap-dolazak" value="${esc(n.zapVremeDolaska || "")}" placeholder="npr. 08:30" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Km dolazak</label>
+        <input id="d-zap-km-dolazak" type="number" value="${n.zapKmDolaska != null ? n.zapKmDolaska : ""}" ${zatvoren ? "disabled" : ""}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Vreme odlaska</label>
+        <input id="d-zap-odlazak" value="${esc(n.zapVremeOdlaska || "")}" placeholder="npr. 11:00" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Km odlazak</label>
+        <input id="d-zap-km-odlazak" type="number" value="${n.zapKmOdlaska != null ? n.zapKmOdlaska : ""}" ${zatvoren ? "disabled" : ""}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Proizvod ostavljen</label>
+        <select id="d-zap-stanje" ${zatvoren ? "disabled" : ""}>
+          <option value="">— izaberi —</option>
+          <option value="ispravan" ${n.zapStanjeProizvoda === "ispravan" ? "selected" : ""}>Ispravno stanje</option>
+          <option value="neispravan" ${n.zapStanjeProizvoda === "neispravan" ? "selected" : ""}>Neispravno stanje</option>
+        </select>
+      </div>
+      <div class="field"><label>Garancija</label>
+        <select id="d-zap-garancija" ${zatvoren ? "disabled" : ""}>
+          <option value="">— izaberi —</option>
+          <option value="garantni" ${n.zapGarancija === "garantni" ? "selected" : ""}>U garantnom roku</option>
+          <option value="vangaranti" ${n.zapGarancija === "vangaranti" ? "selected" : ""}>Vangaranti</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Još potrebno uraditi</label>
+      <textarea id="d-zap-jos" ${zatvoren ? "disabled" : ""}>${esc(n.zapJosPotrebno || "")}</textarea></div>
+    <div class="prilog-actions" style="margin-top:8px;">
+      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-sacuvaj" style="width:auto;">Sačuvaj zapisnik</button>`}
+      <button class="btn btn-sm" id="d-zap-stampaj" style="width:auto;">Štampaj zapisnik</button>
+    </div>
+
     ${n.racun ? `<p class="muted" style="margin-top:12px;">Račun: ${esc(n.racun.brojRacuna)} (${esc(n.racun.status)})</p>` : ""}
     <div class="section-title">Istorija statusa</div>
     ${istorija || `<p class="muted">Nema istorije.</p>`}
@@ -2434,6 +2477,32 @@ function renderDetalj() {
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
   const histBtn = document.getElementById("d-istorija-opreme");
   if (histBtn) histBtn.onclick = () => otvoriIstorijuOpreme(n.opremaId);
+  const zapStampaj = document.getElementById("d-zap-stampaj");
+  if (zapStampaj) zapStampaj.onclick = () => otvoriPdf(`/nalozi/${n.id}/zapisnik`);
+  const zapSacuvaj = document.getElementById("d-zap-sacuvaj");
+  if (zapSacuvaj) {
+    zapSacuvaj.onclick = async () => {
+      try {
+        await api(`/nalozi/${n.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            zapMesto: document.getElementById("d-zap-mesto").value.trim(),
+            zapRadnoVreme: document.getElementById("d-zap-radno").value.trim(),
+            zapVremeDolaska: document.getElementById("d-zap-dolazak").value.trim(),
+            zapKmDolaska: document.getElementById("d-zap-km-dolazak").value || null,
+            zapVremeOdlaska: document.getElementById("d-zap-odlazak").value.trim(),
+            zapKmOdlaska: document.getElementById("d-zap-km-odlazak").value || null,
+            zapStanjeProizvoda: document.getElementById("d-zap-stanje").value || null,
+            zapGarancija: document.getElementById("d-zap-garancija").value || null,
+            zapJosPotrebno: document.getElementById("d-zap-jos").value.trim(),
+          }),
+        });
+        detaljNalog = await api(`/nalozi/${n.id}`);
+        renderDetalj();
+        showToast("Zapisnik sačuvan");
+      } catch (e) { showToast(e.message); }
+    };
+  }
   const gpsBtn = document.getElementById("d-gps");
   if (gpsBtn) {
     gpsBtn.onclick = () => {
