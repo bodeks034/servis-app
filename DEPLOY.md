@@ -37,8 +37,12 @@ Root Directory = **`frontend`**.
 
 ### Nikad
 - `cd frontend` pa `vercel` (traži `frontend/frontend` → puca)
-- `vercel link --project backend-nine-pied-44` (pravi duplikat projekta)
+- `vercel link --project backend-nine-pied-44` (pravi **duplikat** projekta → GitHub mailovi o failed deploy)
 - brisanje `services` iz backend `vercel.json`
+
+### Napomena o mejlu „Production deployment failed”
+Pravi API projekat se zove **`backend`** (alias `backend-nine-pied-44.vercel.app`).  
+Duplikat `backend-nine-pied-44` je obrisan (08.09.2026) jer je pao na svaki push (Root nije video `services` u `vercel.json`).
 
 ## Produkcija
 - App: https://servis-dispecer.vercel.app/
