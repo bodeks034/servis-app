@@ -167,6 +167,19 @@
   .workflow-step.active{border-color:var(--ink);box-shadow:inset 0 0 0 1px var(--ink);}
   .workflow-step .st{display:block;margin-top:4px;color:var(--ink-soft);font-size:11px;}
   @media (max-width:640px){.workflow{grid-template-columns:1fr;}}
+  .abbr{border-bottom:1px dotted var(--ink-faint);cursor:help;}
+  #mapa-wrap{display:grid;grid-template-columns:280px 1fr;gap:12px;min-height:520px;}
+  #mapa-list{overflow:auto;max-height:70vh;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:10px;}
+  #mapa-list .mapa-item{padding:8px 6px;border-bottom:1px solid var(--line);font-size:12px;cursor:pointer;}
+  #mapa-list .mapa-item:hover{background:var(--bg);}
+  #mapa-list .mapa-item .t{font-weight:600;}
+  #mapa-canvas{height:70vh;min-height:420px;border-radius:8px;border:1px solid var(--line);z-index:0;}
+  .mapa-legend{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 10px;font-size:12px;color:var(--ink-soft);}
+  .mapa-legend span::before{content:"";display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle;}
+  .mapa-legend .serv::before{background:#2B6E73;}
+  .mapa-legend .voz::before{background:#D98A1E;}
+  .mapa-legend .nal::before{background:#B23A32;}
+  @media (max-width:860px){#mapa-wrap{grid-template-columns:1fr;}#mapa-list{max-height:180px;}}
   .history-item{font-size:12.5px; color:var(--ink-soft); padding:4px 0; border-bottom:1px solid var(--line);}
   .api-hint{display:none;}
   .detail-meta{display:grid; grid-template-columns:1fr 1fr; gap:8px 14px; background:var(--bg); border-radius:8px; padding:12px 14px; margin-bottom:14px; font-size:13px;}
@@ -302,7 +315,7 @@
     <input type="hidden" id="api-url-input" value="">
     <div class="api-advanced" id="api-advanced">
       <div class="field" style="margin-bottom:0;">
-        <label>API server (samo za napredno)</label>
+        <label><span class="abbr" title="Application Programming Interface — adresa serverskog API-ja">API</span> server (samo za napredno)</label>
         <input id="api-url-advanced" placeholder="https://backend-nine-pied-44.vercel.app/api">
       </div>
     </div>
@@ -315,6 +328,7 @@
     <div class="brand"><div class="mark">terenski servis</div><h1>Servis&nbsp;Dispečer</h1></div>
     <div class="who" id="who-info"></div>
     <div class="nav-item active" data-view="nalozi" data-staff="1"><span>Radni nalozi</span></div>
+    <div class="nav-item" data-view="mapa" data-staff="1" title="GPS mapa servisera i vozila"><span>Mapa GPS</span></div>
     <div class="nav-item" data-view="kalendar" data-staff="1"><span>Kalendar</span></div>
     <div class="nav-item" data-view="podsetnici" data-staff="1"><span>Podsetnici</span></div>
     <div class="nav-item" data-view="oprema" data-staff="1"><span>Oprema i vozila</span></div>
@@ -370,7 +384,7 @@
       <div class="field"><label>Tehničar</label><select id="f-tehnicar"></select></div>
       <div class="field"><label>Zakazano za</label><input id="f-zakazano" type="datetime-local"></div>
     </div>
-    <div class="field"><label>SLA rok (opciono — inače po prioritetu: krit. 4h / hitno 24h / normalan 72h)</label><input id="f-sla" type="datetime-local"></div>
+    <div class="field"><label><span class="abbr" title="Service Level Agreement — rok za reagovanje / rešavanje">SLA</span> rok (opciono — inače po prioritetu: krit. 4h / hitno 24h / normalan 72h)</label><input id="f-sla" type="datetime-local"></div>
     <div class="field"><label>Adresa intervencije</label><input id="f-adresa" placeholder="Ako je posao na terenu"></div>
     <div class="section-title" style="margin:12px 0 8px;">Prijava kao na papirnom radnom nalogu</div>
     <div class="field-row">
@@ -414,7 +428,7 @@
       <div class="field"><label>Lokacija</label><input id="fo-lokacija"></div>
     </div>
     <div class="extra-fields" id="fo-extra">
-      <div class="field" data-extra="vozilo"><label>VIN</label><input id="fo-vin"></div>
+      <div class="field" data-extra="vozilo"><label><span class="abbr" title="Vehicle Identification Number — broj šasije vozila">VIN</span></label><input id="fo-vin"></div>
       <div class="field" data-extra="vozilo"><label>Registracija</label><input id="fo-registracija"></div>
       <div class="field" data-extra="vozilo"><label>Kilometraža</label><input id="fo-km" type="number"></div>
       <div class="field" data-extra="vozilo"><label>Zapremina (ccm)</label><input id="fo-zapremina" type="number"></div>
@@ -446,7 +460,7 @@
       <div class="field"><label>Email</label><input id="fk-email"></div>
     </div>
     <div class="field"><label>Adresa</label><input id="fk-adresa"></div>
-    <div class="field"><label>PIB / JMBG</label><input id="fk-pib"></div>
+    <div class="field"><label><span class="abbr" title="Poreski identifikacioni broj">PIB</span> / <span class="abbr" title="Jedinstveni matični broj građana">JMBG</span></label><input id="fk-pib"></div>
     <div class="error-msg" id="klijent-error"></div>
     <div class="modal-actions"><button class="btn" id="cancel-klijent">Otkaži</button><button class="btn btn-primary" id="save-klijent" style="width:auto;">Sačuvaj</button></div>
   </div>
@@ -461,7 +475,7 @@
       <div class="field"><label>Jedinica mere</label><input id="fd-jedinica" placeholder="kom, m, l..."></div>
     </div>
     <div class="field"><label>Naziv dela</label><input id="fd-naziv"></div>
-    <div class="field"><label>Barkod</label><input id="fd-barkod" placeholder="EAN / interni kod"></div>
+    <div class="field"><label>Barkod (<span class="abbr" title="European Article Number — standardni barkod">EAN</span> / interni)</label><input id="fd-barkod" placeholder="npr. 8600123456789"></div>
     <div class="field-row">
       <div class="field"><label>Min. zaliha</label><input id="fd-min" type="number" value="0"></div>
       <div class="field"><label>Prodajna cena</label><input id="fd-cena" type="number" step="0.01"></div>
@@ -489,8 +503,8 @@
     <h3>Izdaj račun</h3>
     <div class="field"><label>Završen nalog</label><select id="fr-nalog"></select></div>
     <div class="field-row">
-      <div class="field"><label>Cena rada (bez PDV)</label><input id="fr-cena-rada" type="number" step="0.01" value="0"></div>
-      <div class="field"><label>PDV stopa (%)</label><input id="fr-pdv" type="number" step="0.01" value="20"></div>
+      <div class="field"><label>Cena rada (bez <span class="abbr" title="Porez na dodatu vrednost">PDV</span>)</label><input id="fr-cena-rada" type="number" step="0.01" value="0"></div>
+      <div class="field"><label><span class="abbr" title="Porez na dodatu vrednost">PDV</span> stopa (%)</label><input id="fr-pdv" type="number" step="0.01" value="20"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Rok plaćanja (dana)</label><input id="fr-rok" type="number" value="15"></div>
@@ -553,7 +567,7 @@
     </div>
     <div class="field"><label>Naslov</label><input id="fpn-naslov"></div>
     <div class="field-row">
-      <div class="field"><label>PDV %</label><input id="fpn-pdv" type="number" value="20"></div>
+      <div class="field"><label><span class="abbr" title="Porez na dodatu vrednost">PDV</span> %</label><input id="fpn-pdv" type="number" value="20"></div>
       <div class="field"><label>Važi do</label><input id="fpn-vazi" type="date"></div>
     </div>
     <div class="field"><label>Napomena</label><input id="fpn-napomena"></div>
@@ -578,14 +592,14 @@
         <select id="fug-tip">
           <option value="po_pozivu">Po pozivu</option>
           <option value="pausal">Paušal</option>
-          <option value="sla">SLA</option>
+          <option value="sla" title="Service Level Agreement">SLA</option>
         </select>
       </div>
       <div class="field"><label>Mesečna cena</label><input id="fug-cena" type="number" step="0.01"></div>
     </div>
     <div class="field-row">
-      <div class="field"><label>SLA reakcija (h)</label><input id="fug-sla-reak" type="number" placeholder="npr. 4"></div>
-      <div class="field"><label>SLA rešavanje (h)</label><input id="fug-sla-res" type="number" placeholder="npr. 24"></div>
+      <div class="field"><label><span class="abbr" title="Service Level Agreement — rok za prvi odgovor">SLA</span> reakcija (h)</label><input id="fug-sla-reak" type="number" placeholder="npr. 4"></div>
+      <div class="field"><label><span class="abbr" title="Service Level Agreement — rok za rešavanje">SLA</span> rešavanje (h)</label><input id="fug-sla-res" type="number" placeholder="npr. 24"></div>
     </div>
     <div class="field-row">
       <div class="field"><label>Početak</label><input id="fug-pocetak" type="date"></div>

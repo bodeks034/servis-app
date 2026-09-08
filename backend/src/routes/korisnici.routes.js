@@ -20,6 +20,9 @@ const publicSelect = {
   aktivan: true,
   vestine: true,
   klijentId: true,
+  lastLat: true,
+  lastLng: true,
+  lastGeoAt: true,
   createdAt: true,
 };
 

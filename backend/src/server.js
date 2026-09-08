@@ -19,6 +19,7 @@ const portalRoutes = require("./routes/portal.routes");
 const cenovnikRoutes = require("./routes/cenovnik.routes");
 const auditRoutes = require("./routes/audit.routes");
 const rezervacijeRoutes = require("./routes/rezervacije.routes");
+const lokacijeRoutes = require("./routes/lokacije.routes");
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use("/api/portal", portalRoutes);
 app.use("/api/cenovnik", cenovnikRoutes);
 app.use("/api/audit", auditRoutes);
 app.use("/api/rezervacije", rezervacijeRoutes);
+app.use("/api/lokacije", lokacijeRoutes);
 
 // Na Vercel-u putanje ponekad dođu bez /api prefiksa — dupliciraj rute
 app.use("/auth", authRoutes);
@@ -75,6 +77,7 @@ app.use("/portal", portalRoutes);
 app.use("/cenovnik", cenovnikRoutes);
 app.use("/audit", auditRoutes);
 app.use("/rezervacije", rezervacijeRoutes);
+app.use("/lokacije", lokacijeRoutes);
 
 app.use((err, req, res, next) => {
   if (err && err.code === "P2002") {

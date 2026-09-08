@@ -68,6 +68,10 @@ model Korisnik {
   // Portal: korisnik uloge "klijent" vezan za zapis Klijent
   klijentId    String?  @map("klijent_id")
   klijentPortal Klijent? @relation("PortalKorisnik", fields: [klijentId], references: [id])
+  // Poslednja poznata GPS lokacija (serviser na terenu)
+  lastLat      Float?   @map("last_lat")
+  lastLng      Float?   @map("last_lng")
+  lastGeoAt    DateTime? @map("last_geo_at")
   createdAt    DateTime @default(now()) @map("created_at")
 
   dodeljeniNalozi RadniNalog[] @relation("DodeljeniTehnicar")
@@ -161,6 +165,10 @@ model Oprema {
   datumKupovine DateTime?     @map("datum_kupovine")
   garancijaDo   DateTime?     @map("garancija_do")
   lokacija      String?
+  // Poslednja poznata GPS lokacija (npr. vozilo na terenu)
+  geoLat        Float?        @map("geo_lat")
+  geoLng        Float?        @map("geo_lng")
+  geoAt         DateTime?     @map("geo_at")
   status        StatusOpreme  @default(ispravno)
   napomena      String?
   createdAt     DateTime      @default(now()) @map("created_at")

@@ -170,6 +170,30 @@ function statusLabel(s) {
   return { novo: "Novo", u_toku: "U toku", ceka_delove: "Čeka delove", zavrseno: "Završeno", otkazano: "Otkazano" }[s] || s;
 }
 
+/** Skraćenica sa objašnjenjem na hover */
+function tip(tekst, znacenje) {
+  return `<span class="abbr" title="${esc(znacenje)}">${esc(tekst)}</span>`;
+}
+
+const TIP = {
+  SLA: "Service Level Agreement — dogovoreni rok za reagovanje / rešavanje",
+  MTTR: "Mean Time To Repair — prosečno vreme popravke (sati)",
+  MTBF: "Mean Time Between Failures — prosečno vreme između kvarova (dana)",
+  GPS: "Global Positioning System — geografska lokacija",
+  PDF: "Portable Document Format — dokument za štampu / čuvanje",
+  SEF: "Sistem elektronskih faktura — XML za eFakture",
+  VIN: "Vehicle Identification Number — broj šasije",
+  PIB: "Poreski identifikacioni broj",
+  JMBG: "Jedinstveni matični broj građana",
+  PDV: "Porez na dodatu vrednost",
+  API: "Application Programming Interface — serverska adresa",
+  SN: "Serial Number — serijski broj",
+  QR: "Quick Response — 2D kod za brzo otvaranje",
+  EAN: "European Article Number — barkod",
+  HTML: "HyperText Markup Language — web stranica / izveštaj",
+  Kol: "Količina",
+};
+
 function fmtDate(iso) {
   if (!iso) return "—";
   return new Date(iso).toLocaleString("sr-RS", { dateStyle: "short", timeStyle: "short" });
@@ -312,6 +336,7 @@ function sacuvajSesiju() {
 }
 
 function odjaviSe(tiho) {
+  zaustaviGpsPracenje();
   token = null;
   trenutniKorisnik = null;
   sacuvajSesiju();
@@ -319,6 +344,170 @@ function odjaviSe(tiho) {
   document.getElementById("app-shell").classList.add("hidden");
   document.getElementById("login-screen").classList.remove("hidden");
   if (!tiho) showToast("Odjavljeni ste.");
+}
+
+let gpsIntervalId = null;
+let mapaLeaflet = null;
+let mapaMarkersLayer = null;
+
+function ucitajLeaflet() {
+  return new Promise((resolve, reject) => {
+    if (window.L) { resolve(window.L); return; }
+    if (!document.getElementById("leaflet-css")) {
+      const link = document.createElement("link");
+      link.id = "leaflet-css";
+      link.rel = "stylesheet";
+      link.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+      document.head.appendChild(link);
+    }
+    const s = document.createElement("script");
+    s.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    s.onload = () => resolve(window.L);
+    s.onerror = () => reject(new Error("Mapa biblioteka nije učitana (proveri internet)."));
+    document.head.appendChild(s);
+  });
+}
+
+function snimiMojuLokaciju(toast = false) {
+  if (!navigator.geolocation) {
+    if (toast) showToast("GPS nije dostupan na uređaju.");
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(async (pos) => {
+      try {
+        const r = await api("/lokacije/me", {
+          method: "POST",
+          body: JSON.stringify({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+        });
+        if (toast) showToast("Tvoja GPS lokacija je sačuvana");
+        if (currentView === "mapa") renderMapaLokacija().catch(() => {});
+        resolve(r);
+      } catch (e) {
+        if (toast) showToast(e.message);
+        resolve(null);
+      }
+    }, (err) => {
+      if (toast) showToast(err.message || "GPS odbijen");
+      resolve(null);
+    }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 60000 });
+  });
+}
+
+function pokreniGpsPracenje() {
+  if (jeKlijent()) return;
+  snimiMojuLokaciju(false);
+  if (gpsIntervalId) clearInterval(gpsIntervalId);
+  gpsIntervalId = setInterval(() => snimiMojuLokaciju(false), 3 * 60 * 1000);
+}
+
+function zaustaviGpsPracenje() {
+  if (gpsIntervalId) { clearInterval(gpsIntervalId); gpsIntervalId = null; }
+  if (mapaLeaflet) {
+    try { mapaLeaflet.remove(); } catch (_) {}
+    mapaLeaflet = null;
+    mapaMarkersLayer = null;
+  }
+}
+
+async function renderMapaLokacija() {
+  const content = document.getElementById("content");
+  const data = await api("/lokacije");
+  const L = await ucitajLeaflet();
+
+  const serviseri = data.serviseri || [];
+  const vozila = data.vozila || [];
+  const naloziGps = data.nalozi || [];
+
+  const listaHtml = [
+    `<div class="section-title" style="margin-top:0;">Serviseri (${serviseri.length})</div>`,
+    ...serviseri.map((s) =>
+      `<div class="mapa-item" data-lat="${s.lastLat}" data-lng="${s.lastLng}">
+        <div class="t">${esc(s.ime)} ${esc(s.prezime)}</div>
+        <div class="muted">${esc(ulogaLabel(s.uloga))} · ${fmtDate(s.lastGeoAt)}</div>
+      </div>`
+    ),
+    serviseri.length ? "" : `<p class="muted">Još nema snimljenih lokacija servisera. Klikni „Osveži moju lokaciju“.</p>`,
+    `<div class="section-title">Vozila (${vozila.length})</div>`,
+    ...vozila.map((v) =>
+      `<div class="mapa-item" data-lat="${v.geoLat}" data-lng="${v.geoLng}">
+        <div class="t">${esc(v.naziv)}${v.registracija ? ` · ${esc(v.registracija)}` : ""}</div>
+        <div class="muted">${esc(v.klijent?.nazivIliIme || "")} · ${fmtDate(v.geoAt)}</div>
+      </div>`
+    ),
+    vozila.length ? "" : `<p class="muted">Vozila dobijaju GPS kad snimiš GPS na nalogu te opreme.</p>`,
+    `<div class="section-title">Aktivni nalozi (${naloziGps.length})</div>`,
+    ...naloziGps.map((n) =>
+      `<div class="mapa-item" data-lat="${n.geoLat}" data-lng="${n.geoLng}" data-nalog="${n.id}">
+        <div class="t">${esc(n.brojNaloga)} · ${esc(n.naslov)}</div>
+        <div class="muted">${esc(n.klijent?.nazivIliIme || "")} · ${esc(statusLabel(n.status))} · ${fmtDate(n.geoAt)}</div>
+      </div>`
+    ),
+  ].join("");
+
+  content.innerHTML = `
+    <div class="mapa-legend">
+      <span class="serv">Serviseri</span>
+      <span class="voz">Vozila</span>
+      <span class="nal">Aktivni nalozi</span>
+      <span title="${esc(TIP.GPS)}">${tip("GPS", TIP.GPS)} se šalje pri prijavi i na svaka 3 min (ako dozvoliš lokaciju).</span>
+    </div>
+    <div id="mapa-wrap">
+      <div id="mapa-list">${listaHtml}</div>
+      <div id="mapa-canvas"></div>
+    </div>`;
+
+  if (mapaLeaflet) {
+    try { mapaLeaflet.remove(); } catch (_) {}
+    mapaLeaflet = null;
+  }
+
+  const pts = [
+    ...serviseri.map((s) => [s.lastLat, s.lastLng]),
+    ...vozila.map((v) => [v.geoLat, v.geoLng]),
+    ...naloziGps.map((n) => [n.geoLat, n.geoLng]),
+  ];
+  const center = pts.length ? pts[0] : [44.7866, 20.4489];
+  mapaLeaflet = L.map("mapa-canvas").setView(center, pts.length ? 12 : 7);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap",
+  }).addTo(mapaLeaflet);
+  mapaMarkersLayer = L.layerGroup().addTo(mapaLeaflet);
+
+  const add = (lat, lng, color, html) => {
+    const icon = L.divIcon({
+      className: "",
+      html: `<div style="width:14px;height:14px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.35);"></div>`,
+      iconSize: [14, 14],
+      iconAnchor: [7, 7],
+    });
+    L.marker([lat, lng], { icon }).bindPopup(html).addTo(mapaMarkersLayer);
+  };
+
+  serviseri.forEach((s) => add(s.lastLat, s.lastLng, "#2B6E73",
+    `<strong>${esc(s.ime)} ${esc(s.prezime)}</strong><br>${esc(ulogaLabel(s.uloga))}<br>${fmtDate(s.lastGeoAt)}`));
+  vozila.forEach((v) => add(v.geoLat, v.geoLng, "#D98A1E",
+    `<strong>${esc(v.naziv)}</strong><br>${esc(v.registracija || "")}<br>${fmtDate(v.geoAt)}`));
+  naloziGps.forEach((n) => add(n.geoLat, n.geoLng, "#B23A32",
+    `<strong>${esc(n.brojNaloga)}</strong><br>${esc(n.naslov)}<br>${esc(statusLabel(n.status))}`));
+
+  if (pts.length > 1) {
+    mapaLeaflet.fitBounds(L.latLngBounds(pts), { padding: [28, 28], maxZoom: 14 });
+  }
+
+  setTimeout(() => mapaLeaflet.invalidateSize(), 80);
+
+  content.querySelectorAll(".mapa-item[data-lat]").forEach((el) => {
+    el.addEventListener("click", () => {
+      const lat = Number(el.dataset.lat);
+      const lng = Number(el.dataset.lng);
+      if (Number.isFinite(lat) && Number.isFinite(lng)) {
+        mapaLeaflet.setView([lat, lng], 15);
+      }
+      if (el.dataset.nalog) otvoriDetaljNaloga(el.dataset.nalog);
+    });
+  });
 }
 
 document.querySelectorAll(".login-tab").forEach((tab) => {
@@ -417,6 +606,7 @@ async function ulazAkoUspesno() {
   await ucitajSve();
   render();
   posaljiRed();
+  pokreniGpsPracenje();
 }
 
 async function ucitajSifarnike() {
@@ -529,6 +719,17 @@ function render() {
     });
   }
 
+  else if (currentView === "mapa") {
+    document.getElementById("view-title").textContent = "Mapa GPS";
+    btnNew.textContent = "Osveži moju lokaciju";
+    btnNew.classList.remove("hidden");
+    btnNew.onclick = () => snimiMojuLokaciju(true);
+    content.innerHTML = `<p class="muted">Učitavam lokacije…</p>`;
+    renderMapaLokacija().catch((e) => {
+      content.innerHTML = `<p class="error-msg">${esc(e.message)}</p>`;
+    });
+  }
+
   else if (currentView === "kalendar") {
     document.getElementById("view-title").textContent = "Kalendar zakazivanja";
     btnNew.textContent = "+ Novi nalog";
@@ -592,7 +793,7 @@ function render() {
     if (filtered.length === 0) html += `<tr><td colspan="7" class="empty">Nema unetih jedinica</td></tr>`;
     for (const o of filtered) {
       const gar = o.garancijaDo ? new Date(o.garancijaDo).toLocaleDateString("sr-RS") : "—";
-      const idn = [o.vin && `VIN ${o.vin}`, o.registracija, o.serijskiBroj && `S/N ${o.serijskiBroj}`, o.kilometraza != null && `${o.kilometraza} km`, o.satnice != null && `${o.satnice} h`].filter(Boolean).join(" · ");
+      const idn = [o.vin && `${tip("VIN", TIP.VIN)} ${esc(o.vin)}`, o.registracija, o.serijskiBroj && `${tip("S/N", TIP.SN)} ${esc(o.serijskiBroj)}`, o.kilometraza != null && `${o.kilometraza} km`, o.satnice != null && `${o.satnice} h`].filter(Boolean).join(" · ");
       html += `<tr class="clickable" data-id="${o.id}"><td>${esc(o.naziv)}</td><td><span class="badge ${catBadgeClass[o.kategorijaId] || "c1"}">${esc(o.kategorija?.naziv || "")}</span></td>
         <td>${esc(o.klijent?.nazivIliIme || "—")}</td><td class="mono">${esc(idn || (o.proizvodjac || "") + " " + (o.model || ""))}</td>
         <td class="mono">${gar}</td><td>${esc(o.status)}</td>
@@ -663,7 +864,7 @@ function render() {
     }
     const rezAktivne = rezervacije.filter((r) => r.status === "rezervisano");
     if (rezAktivne.length) {
-      html += `<div class="section-title">Rezervacije delova</div><table><thead><tr><th>Nalog</th><th>Deo</th><th>Kol.</th><th></th></tr></thead><tbody>`;
+      html += `<div class="section-title">Rezervacije delova</div><table><thead><tr><th>Nalog</th><th>Deo</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th></th></tr></thead><tbody>`;
       for (const r of rezAktivne.slice(0, 20)) {
         html += `<tr><td class="mono">${esc(r.nalog?.brojNaloga || "")}</td>
           <td>${esc(r.deo?.naziv || "")}</td><td class="mono">${r.kolicina}</td>
@@ -875,7 +1076,7 @@ function render() {
     const filtered = ugovori.filter((u) =>
       !q || (u.naziv || "").toLowerCase().includes(q) || (u.klijent?.nazivIliIme || "").toLowerCase().includes(q)
     );
-    let html = `<table><thead><tr><th>Naziv</th><th>Klijent</th><th>Tip</th><th>SLA</th><th>Period</th><th>Status</th><th></th></tr></thead><tbody>`;
+    let html = `<table><thead><tr><th>Naziv</th><th>Klijent</th><th>Tip</th><th title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)}</th><th>Period</th><th>Status</th><th></th></tr></thead><tbody>`;
     if (!filtered.length) html += `<tr><td colspan="7" class="empty">Nema ugovora</td></tr>`;
     for (const u of filtered) {
       const sla = [u.slaReakcijaSati != null && `reak. ${u.slaReakcijaSati}h`, u.slaResavanjeSati != null && `reš. ${u.slaResavanjeSati}h`].filter(Boolean).join(" · ") || "—";
@@ -1038,7 +1239,7 @@ function render() {
             ).join("") || `<tr><td colspan="4" class="empty">Nema računa</td></tr>`
           }</tbody></table>
           <div class="section-title">Ugovori</div>
-          <table><thead><tr><th>Naziv</th><th>Početak</th><th>Kraj</th><th>SLA</th></tr></thead><tbody>${
+          <table><thead><tr><th>Naziv</th><th>Početak</th><th>Kraj</th><th title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)}</th></tr></thead><tbody>${
             (data.ugovori || []).map((u) =>
               `<tr><td>${esc(u.naziv || "Ugovor")}</td><td class="mono">${u.pocetak ? fmtDay(u.pocetak) : "—"}</td>
                <td class="mono">${u.kraj ? fmtDay(u.kraj) : "—"}</td>
@@ -1105,8 +1306,8 @@ function render() {
         <td class="mono">${Number(r.ukupanIznos).toFixed(2)}</td>
         <td>${pill}</td>
         <td style="white-space:nowrap;">
-          <button class="btn btn-sm" data-pdf-racun="${r.id}">PDF</button>
-          <button class="btn btn-sm" data-sef-racun="${r.id}">SEF XML</button>
+          <button class="btn btn-sm" data-pdf-racun="${r.id}" title="${esc(TIP.PDF)}">${tip("PDF", TIP.PDF)}</button>
+          <button class="btn btn-sm" data-sef-racun="${r.id}" title="${esc(TIP.SEF)}">${tip("SEF", TIP.SEF)} XML</button>
           ${r.status !== "placen" ? `<button class="btn btn-sm" data-placen="${r.id}">Plaćen</button>` : ""}
         </td></tr>`;
     }
@@ -1187,7 +1388,7 @@ function render() {
           <div class="stat-card"><div class="label">Prihod (plaćeno)</div><div class="value" style="font-size:18px;">${report.prihod.toFixed(0)}</div></div>
           <div class="stat-card"><div class="label">Trošak delova</div><div class="value" style="font-size:18px;">${report.trosakDelova.toFixed(0)}</div></div>
           <div class="stat-card success"><div class="label">Profit (okvir)</div><div class="value" style="font-size:18px;">${report.profit.toFixed(0)}</div></div>
-          <div class="stat-card"><div class="label">MTTR h / MTBF d</div><div class="value" style="font-size:18px;">${report.mttrSati ?? "—"} / ${report.mtbfDani ?? "—"}</div></div>
+          <div class="stat-card"><div class="label">${tip("MTTR", TIP.MTTR)} h / ${tip("MTBF", TIP.MTBF)} d</div><div class="value" style="font-size:18px;">${report.mttrSati ?? "—"} / ${report.mtbfDani ?? "—"}</div></div>
         </div>
         <div class="stats-row">
           <div class="stat-card"><div class="label">Teren</div><div class="value">${teren}</div></div>
@@ -2326,7 +2527,7 @@ function renderDetalj() {
   document.getElementById("nalog-detalj-body").innerHTML = `
     <div class="detail-head">
       <div>
-        <div class="card-id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}${slaOverdue ? ' · <span class="badge kritican">SLA istekao</span>' : ""}</div>
+        <div class="card-id">${esc(n.brojNaloga)} · ${esc(statusLabel(n.status))}${slaOverdue ? ` · <span class="badge kritican" title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} istekao</span>` : ""}</div>
         <h3>${esc(n.naslov)}</h3>
       </div>
       <button class="btn" id="zatvori-detalj">Zatvori</button>
@@ -2352,8 +2553,8 @@ function renderDetalj() {
       <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
       <div><div class="k">Kategorija / usluga</div><div class="v">${esc(n.kategorija?.naziv || "")} · ${esc(n.tipUsluge?.naziv || "")}</div></div>
       <div><div class="k">Tehničar</div><div class="v">${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "Nedodeljen"}</div></div>
-      <div><div class="k">SLA rok</div><div class="v">${n.slaRok ? fmtDate(n.slaRok) : "—"}</div></div>
-      <div><div class="k">GPS</div><div class="v">${n.geoLat != null ? `${Number(n.geoLat).toFixed(5)}, ${Number(n.geoLng).toFixed(5)} (${fmtDate(n.geoAt)})` : "—"}</div></div>
+      <div><div class="k" title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} rok</div><div class="v">${n.slaRok ? fmtDate(n.slaRok) : "—"}</div></div>
+      <div><div class="k" title="${esc(TIP.GPS)}">${tip("GPS", TIP.GPS)}</div><div class="v">${n.geoLat != null ? `<a href="https://www.openstreetmap.org/?mlat=${n.geoLat}&mlon=${n.geoLng}#map=16/${n.geoLat}/${n.geoLng}" target="_blank" rel="noopener">${Number(n.geoLat).toFixed(5)}, ${Number(n.geoLng).toFixed(5)}</a> (${fmtDate(n.geoAt)})` : "—"}</div></div>
     </div>
 
     <div class="section-title">1. Zapisnik o zatečenom stanju</div>
@@ -2403,7 +2604,7 @@ function renderDetalj() {
     <div class="prilog-actions" style="margin-top:0;">
       <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;" ${imaZateceno ? "" : "disabled title=\"Prvo zatečeno stanje\""}>Štampaj radni nalog (papirni obrazac)</button>
       ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
-      ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps">Snimi GPS</button>`}
+      ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps" title="${esc(TIP.GPS)} — snimi lokaciju na nalog, servisera i vozilo">Snimi ${tip("GPS", TIP.GPS)}</button>`}
     </div>
     <div class="status-actions">
       ${["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"].map((s) =>
@@ -2435,7 +2636,7 @@ function renderDetalj() {
         </select>
       </div>
     </div>
-    <div class="field"><label>SLA rok</label>
+    <div class="field"><label title="${esc(TIP.SLA)}">${tip("SLA", TIP.SLA)} rok</label>
       <input id="d-sla" type="datetime-local" value="${uDatetimeLocal(n.slaRok)}" ${zatvoren ? "disabled" : ""}></div>
     <div class="field"><label>Adresa intervencije</label>
       <input id="d-adresa" value="${esc(n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
@@ -2470,18 +2671,18 @@ function renderDetalj() {
     </div>
 
     <div class="section-title">USLUGE (rad) — kao na papirnom nalogu</div>
-    <table><thead><tr><th>Usluga</th><th>Kol.</th><th>Cena</th><th>Vrednost</th><th></th></tr></thead><tbody>${uslugeRedovi}</tbody></table>
+    <table><thead><tr><th>Usluga</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th>Vrednost</th><th></th></tr></thead><tbody>${uslugeRedovi}</tbody></table>
     ${zatvoren ? "" : `
       <div class="field-row" style="margin-top:10px;">
         <div class="field"><label>Opis usluge</label><input id="d-usluga-opis" placeholder="npr. Zamena ulja i filtera"></div>
-        <div class="field"><label>Kol.</label><input id="d-usluga-kol" type="number" min="0.1" step="0.1" value="1"></div>
+        <div class="field"><label title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</label><input id="d-usluga-kol" type="number" min="0.1" step="0.1" value="1"></div>
         <div class="field"><label>Cena</label><input id="d-usluga-cena" type="number" min="0" step="0.01" value="0"></div>
       </div>
       <button class="btn btn-sm" id="d-dodaj-uslugu">Dodaj uslugu</button>
     `}
 
     <div class="section-title">DELOVI</div>
-    <table><thead><tr><th>Deo</th><th>Kol.</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
+    <table><thead><tr><th>Deo</th><th title="${esc(TIP.Kol)}">${tip("Kol.", TIP.Kol)}</th><th>Cena</th><th></th></tr></thead><tbody>${utrosakRedovi}</tbody></table>
     ${zatvoren ? "" : `
       <div class="field-row" style="margin-top:10px;">
         <div class="field"><label>Magacin</label><select id="d-magacin"><option value="">Automatski (vozilo → centralni)</option>${magacinOpts}</select></div>
@@ -2592,7 +2793,7 @@ function renderDetalj() {
           });
           detaljNalog = await api(`/nalozi/${n.id}`);
           renderDetalj();
-          showToast("GPS sačuvan");
+          showToast("GPS sačuvan (nalog + serviser + oprema/vozilo)");
         } catch (e) { showToast(e.message); gpsBtn.disabled = false; }
       }, (err) => { showToast(err.message || "GPS odbijen"); gpsBtn.disabled = false; }, { enableHighAccuracy: true, timeout: 15000 });
     };
@@ -3146,8 +3347,8 @@ async function otvoriIstorijuOpreme(opremaId) {
       </div>
       <div class="stats-row">
         <div class="stat-card"><div class="label">Nalozi</div><div class="value">${m.brojNaloga || 0}</div></div>
-        <div class="stat-card"><div class="label">MTTR (h)</div><div class="value" style="font-size:20px;">${m.mttrSati ?? "—"}</div></div>
-        <div class="stat-card"><div class="label">MTBF (dana)</div><div class="value" style="font-size:20px;">${m.mtbfDani ?? "—"}</div></div>
+        <div class="stat-card"><div class="label">${tip("MTTR", TIP.MTTR)} (h)</div><div class="value" style="font-size:20px;">${m.mttrSati ?? "—"}</div></div>
+        <div class="stat-card"><div class="label">${tip("MTBF", TIP.MTBF)} (dana)</div><div class="value" style="font-size:20px;">${m.mtbfDani ?? "—"}</div></div>
         <div class="stat-card success"><div class="label">Završeno</div><div class="value">${m.brojZavrsenih || 0}</div></div>
       </div>
       <table><thead><tr><th>Broj</th><th>Naslov</th><th>Status</th><th>Datum</th><th>Tehničar</th></tr></thead>

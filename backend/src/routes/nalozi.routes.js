@@ -283,6 +283,20 @@ router.post("/:id/geo", asyncHandler(async (req, res) => {
     include: nalogInclude,
   });
 
+  const now = new Date();
+  const tehnicarId = postojeci.dodeljeniTehnicarId || req.user.id;
+  await prisma.korisnik.update({
+    where: { id: tehnicarId },
+    data: { lastLat: lat, lastLng: lng, lastGeoAt: now },
+  }).catch(() => {});
+
+  if (postojeci.opremaId) {
+    await prisma.oprema.update({
+      where: { id: postojeci.opremaId },
+      data: { geoLat: lat, geoLng: lng, geoAt: now },
+    }).catch(() => {});
+  }
+
   await upisiAudit({
     firmaId: req.user.firmaId,
     korisnikId: req.user.id,
