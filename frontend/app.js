@@ -2193,6 +2193,10 @@ document.getElementById("save-nalog").addEventListener("click", async () => {
     document.querySelectorAll(".nav-item").forEach((i) => i.classList.remove("active"));
     document.querySelector('[data-view="nalozi"]').classList.add("active");
     render();
+    if (rezultat && !rezultat.__queued && rezultat.id) {
+      otvoriDetaljNaloga(rezultat.id);
+      showToast("Korak 1: popuni zapisnik o zatečenom stanju (prijem)");
+    }
   } catch (e) { err.textContent = e.message; }
 });
 
