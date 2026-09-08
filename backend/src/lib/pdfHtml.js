@@ -1,4 +1,4 @@
-function esc(s) {
+﻿function esc(s) {
   return String(s ?? "")
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -7,12 +7,12 @@ function esc(s) {
 }
 
 function fmt(iso) {
-  if (!iso) return "—";
+  if (!iso) return "â€”";
   return new Date(iso).toLocaleString("sr-RS");
 }
 
 function fmtDay(iso) {
-  if (!iso) return "—";
+  if (!iso) return "â€”";
   return new Date(iso).toLocaleDateString("sr-RS");
 }
 
@@ -20,7 +20,7 @@ function fmtMoney(n) {
   return Number(n || 0).toLocaleString("sr-RS", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-const SAGLASNOST = `Naručilac je saglasan: 1) Da se izvrše navedeni potrebni radovi 2) Da se izvrše i obave i oni nepredvidivi radovi koji su neophodni za izvršenje naručenih radova 3) Da se izvršeni radovi i ugrađeni delovi naplate po važećim cenama servisa 4) Da rok završetka radova može da bude produžen u slučaju nedostatka rezervnih delova, dodatnih problema ili više sile 5) Da po preuzimanju vozila/opreme podigne stare delove, u protivnom će biti uništeni 6) Da isplati vrednost popravke pre preuzimanja 7) U slučaju spora nadležan je Sud u sedištu servisa.`;
+const SAGLASNOST = `NaruÄilac je saglasan: 1) Da se izvrÅ¡e navedeni potrebni radovi 2) Da se izvrÅ¡e i obave i oni nepredvidivi radovi koji su neophodni za izvrÅ¡enje naruÄenih radova 3) Da se izvrÅ¡eni radovi i ugraÄ‘eni delovi naplate po vaÅ¾eÄ‡im cenama servisa 4) Da rok zavrÅ¡etka radova moÅ¾e da bude produÅ¾en u sluÄaju nedostatka rezervnih delova, dodatnih problema ili viÅ¡e sile 5) Da po preuzimanju vozila/opreme podigne stare delove, u protivnom Ä‡e biti uniÅ¡teni 6) Da isplati vrednost popravke pre preuzimanja 7) U sluÄaju spora nadleÅ¾an je Sud u sediÅ¡tu servisa.`;
 
 function htmlShell(title, body) {
   return `<!DOCTYPE html>
@@ -46,7 +46,7 @@ function htmlShell(title, body) {
   .legal{font-size:10px;line-height:1.35;margin-top:14px;border:1px solid #ccc;padding:8px;}
   @media print{button{display:none!important;} body{margin:10px;}}
 </style></head><body>
-<button onclick="window.print()" style="padding:8px 14px;margin-bottom:12px;cursor:pointer;">Štampaj / sačuvaj PDF</button>
+<button onclick="window.print()" style="padding:8px 14px;margin-bottom:12px;cursor:pointer;">Å tampaj / saÄuvaj PDF</button>
 ${body}
 </body></html>`;
 }
@@ -81,10 +81,10 @@ function nalogHtml(nalog, firma) {
   const potpisServ = prilozi.find((p) => p.tip === "potpis_servisa");
   const potpisPreuzeo = prilozi.find((p) => p.tip === "potpis_preuzeo");
 
-  const markaModel = [o.proizvodjac, o.model || o.naziv].filter(Boolean).join(" ") || o.naziv || "—";
+  const markaModel = [o.proizvodjac, o.model || o.naziv].filter(Boolean).join(" ") || o.naziv || "â€”";
   const kreirao = nalog.kreirao
     ? `${nalog.kreirao.ime} ${nalog.kreirao.prezime}`
-    : "—";
+    : "â€”";
 
   const emptyDelovi = Array.from({ length: Math.max(0, 10 - (nalog.utroseniDelovi || []).length) }, (_, i) =>
     `<tr><td class="center muted">${(nalog.utroseniDelovi || []).length + i + 1}.</td><td></td><td></td><td></td><td></td><td></td></tr>`
@@ -94,12 +94,12 @@ function nalogHtml(nalog, firma) {
   ).join("");
 
   const body = `
-  <div class="muted center">${esc(firma?.naziv || "Servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` · ${esc(firma.adresa)}` : ""}</div>
+  <div class="muted center">${esc(firma?.naziv || "Servis")}${firma?.pib ? ` Â· PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` Â· ${esc(firma.adresa)}` : ""}</div>
   <h1>RADNI NALOG BR. ${esc(nalog.brojNaloga)}</h1>
 
   <table style="margin-top:10px;">
     <tr>
-      <th>Broj naloga</th><th>Datum prijema</th><th>Završetak radova</th><th>Izradio radni nalog</th>
+      <th>Broj naloga</th><th>Datum prijema</th><th>ZavrÅ¡etak radova</th><th>Izradio radni nalog</th>
     </tr>
     <tr>
       <td class="mono">${esc(nalog.brojNaloga)}</td>
@@ -110,10 +110,10 @@ function nalogHtml(nalog, firma) {
   </table>
 
   <table style="margin-top:8px;">
-    <tr><th colspan="2">Naručilac radova</th></tr>
+    <tr><th colspan="2">NaruÄilac radova</th></tr>
     <tr>
-      <td style="width:50%"><strong>${esc(nalog.klijent?.nazivIliIme || "—")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}</td>
-      <td>Tel: ${esc(nalog.klijent?.telefon || "—")}<br>${esc(nalog.klijent?.email || "")}</td>
+      <td style="width:50%"><strong>${esc(nalog.klijent?.nazivIliIme || "â€”")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}</td>
+      <td>Tel: ${esc(nalog.klijent?.telefon || "â€”")}<br>${esc(nalog.klijent?.email || "")}</td>
     </tr>
   </table>
 
@@ -125,7 +125,7 @@ function nalogHtml(nalog, firma) {
   <h2 style="margin-top:12px;">Vozilo / oprema</h2>
   <table>
     <tr>
-      <th>Marka i model</th><th>Reg. oznaka</th><th>Broj šasije</th><th>Stanje Km</th><th>Stanje goriva</th>
+      <th>Marka i model</th><th>Reg. oznaka</th><th>Broj Å¡asije</th><th>Stanje Km</th><th>Stanje goriva</th>
     </tr>
     <tr>
       <td>${esc(markaModel)}</td>
@@ -148,7 +148,7 @@ function nalogHtml(nalog, firma) {
 
   <h2>DELOVI</h2>
   <table>
-    <thead><tr><th class="center">R.b.</th><th>Kataloški broj</th><th>Naziv</th><th class="center">Kol.</th><th class="right">Cena</th><th class="right">Vrednost</th></tr></thead>
+    <thead><tr><th class="center">R.b.</th><th>KataloÅ¡ki broj</th><th>Naziv</th><th class="center">Kol.</th><th class="right">Cena</th><th class="right">Vrednost</th></tr></thead>
     <tbody>${delovi}${emptyDelovi}</tbody>
   </table>
 
@@ -166,8 +166,8 @@ function nalogHtml(nalog, firma) {
       <div>Odgovorno lice servisa</div>
     </div>
     <div class="sig-box">
-      ${potpisNar ? `<img src="${esc(potpisNar.fajlUrl)}" alt="Potpis naručioca">` : `<div class="sig-line"></div>`}
-      <div>Naručilac radova</div>
+      ${potpisNar ? `<img src="${esc(potpisNar.fajlUrl)}" alt="Potpis naruÄioca">` : `<div class="sig-line"></div>`}
+      <div>NaruÄilac radova</div>
     </div>
     <div class="sig-box">
       ${potpisPreuzeo ? `<img src="${esc(potpisPreuzeo.fajlUrl)}" alt="Preuzeo">` : `<div class="sig-line"></div>`}
@@ -188,9 +188,9 @@ function racunHtml(racun, firma) {
   const body = `
   <div style="display:flex;justify-content:space-between;gap:16px;margin-bottom:16px;">
     <div>
-      <div class="muted">${esc(firma?.naziv || "Servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}</div>
-      <h1 style="text-align:left;">Račun ${esc(racun.brojRacuna)}</h1>
-      <div class="muted">Datum: ${fmt(racun.izdatAt)} · Rok: ${fmt(racun.rokPlacanja)}</div>
+      <div class="muted">${esc(firma?.naziv || "Servis")}${firma?.pib ? ` Â· PIB ${esc(firma.pib)}` : ""}</div>
+      <h1 style="text-align:left;">RaÄun ${esc(racun.brojRacuna)}</h1>
+      <div class="muted">Datum: ${fmt(racun.izdatAt)} Â· Rok: ${fmt(racun.rokPlacanja)}</div>
     </div>
     <div class="box">
       <div><strong>Status:</strong> ${esc(racun.status)}</div>
@@ -198,7 +198,7 @@ function racunHtml(racun, firma) {
     </div>
   </div>
   <div class="box">
-    <div><strong>Kupac:</strong> ${esc(racun.klijent?.nazivIliIme || "—")}</div>
+    <div><strong>Kupac:</strong> ${esc(racun.klijent?.nazivIliIme || "â€”")}</div>
     <div>${esc(racun.klijent?.adresa || "")}</div>
     <div>${esc(racun.klijent?.pibIliJmbg || "")}</div>
   </div>
@@ -211,17 +211,93 @@ function racunHtml(racun, firma) {
     <tr><td style="border:none;"><strong>Ukupno</strong></td><td class="right mono" style="border:none;"><strong>${fmtMoney(racun.ukupanIznos)}</strong></td></tr>
   </table>
   ${racun.napomena ? `<p class="muted">${esc(racun.napomena)}</p>` : ""}`;
-  return htmlShell(`Račun ${racun.brojRacuna}`, body);
+  return htmlShell(`RaÄun ${racun.brojRacuna}`, body);
 }
 
 function checkMark(uslov) {
   return uslov ? "☑" : "☐";
 }
 
-function zapisnikHtml(nalog, firma) {
+function zapisnikZaglavlje(nalog, firma) {
   const o = nalog.oprema || {};
   const god = o.godinaProizvodnje || (o.datumKupovine ? new Date(o.datumKupovine).getFullYear() : "");
   const proizvod = [o.proizvodjac, o.model || o.naziv].filter(Boolean).join(" ") || o.naziv || "";
+  return `
+  <div class="muted center">${esc(firma?.naziv || "Ovlašćeni servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` · ${esc(firma.adresa)}` : ""}</div>
+  <table>
+    <tr><th style="width:32%">Naziv i adresa kupca</th>
+      <td><strong>${esc(nalog.klijent?.nazivIliIme || "")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}<br>Tel: ${esc(nalog.klijent?.telefon || "—")}</td></tr>
+    <tr><th>Naziv i tip proizvoda</th><td>${esc(proizvod)}</td></tr>
+    <tr><th>Fabrički broj / god. proizv.</th><td class="mono">${esc(o.serijskiBroj || "—")} / ${esc(god || "—")}</td></tr>
+    <tr><th>Broj šasije (VIN)</th><td class="mono">${esc(o.vin || "—")}</td></tr>
+    <tr><th>Reg. oznaka / tip vozila</th><td class="mono">${esc(o.registracija || "—")} · ${esc(o.naziv || "")}</td></tr>
+  </table>`;
+}
+
+function zapisnikPotpisi(nalog) {
+  const tehnicar = nalog.dodeljeniTehnicar
+    ? `${nalog.dodeljeniTehnicar.ime} ${nalog.dodeljeniTehnicar.prezime}`
+    : "";
+  const potpisNar = (nalog.prilozi || []).find((p) => p.tip === "potpis_klijenta");
+  const potpisServ = (nalog.prilozi || []).find((p) => p.tip === "potpis_servisa");
+  return `
+  <div class="sig-row" style="grid-template-columns:1fr 1fr;">
+    <div class="sig-box">
+      ${potpisNar ? `<img src="${esc(potpisNar.fajlUrl)}" alt="Za kupca">` : `<div class="sig-line"></div>`}
+      <div>ZA KUPCA</div>
+    </div>
+    <div class="sig-box">
+      ${potpisServ ? `<img src="${esc(potpisServ.fajlUrl)}" alt="Za servis">` : `<div class="sig-line"></div>`}
+      <div>ZA OVLAŠĆENI SERVIS${tehnicar ? `<br><span class="muted">${esc(tehnicar)}</span>` : ""}</div>
+    </div>
+  </div>`;
+}
+
+/** 1) Zapisnik o zatečenom stanju — pre početka rada */
+function zapisnikZatecenoHtml(nalog, firma) {
+  const garantni = nalog.zapGarancija === "garantni";
+  const vangaranti = nalog.zapGarancija === "vangaranti";
+  const ispravan = nalog.zapStanjeZateceno === "ispravan";
+  const neispravan = nalog.zapStanjeZateceno === "neispravan";
+  const opis = nalog.zapOpisZateceno || nalog.opis || "";
+
+  const body = `
+  ${zapisnikZaglavlje(nalog, firma)}
+  <h1 style="margin-top:14px;">ZAPISNIK<br><span style="font-size:14px;font-weight:600;">O ZATEČENOM STANJU br. ${esc(nalog.brojNaloga)}</span></h1>
+  <p class="muted center" style="margin:4px 0 12px;">Popunjava se pri dolasku / prijemu — pre početka radova · ${fmtDay(nalog.zapZatecenoAt || nalog.createdAt)}</p>
+
+  <h2>Dolazak / prijem</h2>
+  <table>
+    <tr><th>Mesto</th><td>${esc(nalog.zapMesto || nalog.adresaIntervencije || "")}</td>
+      <th>Vreme dolaska</th><td>${esc(nalog.zapVremeDolaska || "")}</td></tr>
+    <tr><th>Km / brojač pri dolasku</th><td class="mono">${nalog.zapKmDolaska != null ? nalog.zapKmDolaska : (nalog.kmPriPrijemu != null ? nalog.kmPriPrijemu : "")}</td>
+      <th>Stanje goriva</th><td>${esc(nalog.stanjeGoriva || "—")}</td></tr>
+  </table>
+
+  <h2>Zatečeno stanje proizvoda</h2>
+  <table>
+    <tr>
+      <th style="width:40%">Proizvod je zatečen</th>
+      <td>${checkMark(ispravan)} u ispravnom stanju &nbsp;&nbsp; ${checkMark(neispravan)} u neispravnom stanju</td>
+    </tr>
+    <tr>
+      <th>Proizvod je</th>
+      <td>${checkMark(garantni)} u garantnom roku &nbsp;&nbsp; ${checkMark(vangaranti)} u vangarantnom roku</td>
+    </tr>
+  </table>
+
+  <h2>Opis zatečenog stanja / reklamacija klijenta</h2>
+  <div class="box" style="min-height:72px;white-space:pre-wrap;">${esc(opis)}</div>
+
+  <p style="margin-top:12px;">Stranka potvrđuje da je gore navedeno stanje tačno zatečeno pri predaji / dolasku servisa.</p>
+  <p style="margin-top:16px;">U ${esc(nalog.zapMesto || nalog.adresaIntervencije || firma?.adresa || "_______________")}, dana ${fmtDay(nalog.zapZatecenoAt || new Date())}</p>
+  ${zapisnikPotpisi(nalog)}`;
+
+  return htmlShell(`Zapisnik zatečeno ${nalog.brojNaloga}`, body);
+}
+
+/** 3) Zapisnik o završenom poslu — posle rada */
+function zapisnikZavrsenoHtml(nalog, firma) {
   const tehnicar = nalog.dodeljeniTehnicar
     ? `${nalog.dodeljeniTehnicar.ime} ${nalog.dodeljeniTehnicar.prezime}`
     : "";
@@ -230,7 +306,6 @@ function zapisnikHtml(nalog, firma) {
     .join("; ");
   const radovi = [
     nalog.naslov,
-    nalog.opis,
     ...(nalog.usluge || []).map((u) => `${u.opis}${Number(u.kolicina) !== 1 ? ` ×${u.kolicina}` : ""}`),
   ]
     .filter(Boolean)
@@ -241,29 +316,17 @@ function zapisnikHtml(nalog, firma) {
       ? Math.abs(Number(nalog.zapKmOdlaska) - Number(nalog.zapKmDolaska))
       : null;
 
-  const potpisNar = (nalog.prilozi || []).find((p) => p.tip === "potpis_klijenta");
-  const potpisServ = (nalog.prilozi || []).find((p) => p.tip === "potpis_servisa");
-
   const ispravan = nalog.zapStanjeProizvoda === "ispravan";
   const neispravan = nalog.zapStanjeProizvoda === "neispravan";
   const garantni = nalog.zapGarancija === "garantni";
   const vangaranti = nalog.zapGarancija === "vangaranti";
 
   const body = `
-  <div class="muted center">${esc(firma?.naziv || "Ovlašćeni servis")}${firma?.pib ? ` · PIB ${esc(firma.pib)}` : ""}${firma?.adresa ? ` · ${esc(firma.adresa)}` : ""}</div>
-  <h1>ZAPISNIK<br><span style="font-size:14px;font-weight:600;">O IZVRŠENIM RADOVIMA br. ${esc(nalog.brojNaloga)}</span></h1>
-  <p class="muted center" style="margin:4px 0 12px;">Privremeni / terenski zapisnik servisne službe · ${fmtDay(nalog.zavrsenoAt || nalog.createdAt)}</p>
+  ${zapisnikZaglavlje(nalog, firma)}
+  <h1 style="margin-top:14px;">ZAPISNIK<br><span style="font-size:14px;font-weight:600;">O ZAVRŠENOM POSLU br. ${esc(nalog.brojNaloga)}</span></h1>
+  <p class="muted center" style="margin:4px 0 12px;">Popunjava se po završetku radova · ${fmtDay(nalog.zapZavrsenoZapAt || nalog.zavrsenoAt || nalog.createdAt)}</p>
 
-  <table>
-    <tr><th style="width:32%">Naziv i adresa kupca</th>
-      <td><strong>${esc(nalog.klijent?.nazivIliIme || "")}</strong><br>${esc(nalog.klijent?.adresa || nalog.adresaIntervencije || "")}<br>Tel: ${esc(nalog.klijent?.telefon || "—")}</td></tr>
-    <tr><th>Naziv i tip proizvoda</th><td>${esc(proizvod)}</td></tr>
-    <tr><th>Fabrički broj / god. proizv.</th><td class="mono">${esc(o.serijskiBroj || "—")} / ${esc(god || "—")}</td></tr>
-    <tr><th>Broj šasije (VIN)</th><td class="mono">${esc(o.vin || "—")}</td></tr>
-    <tr><th>Reg. oznaka / tip vozila</th><td class="mono">${esc(o.registracija || "—")} · ${esc(o.naziv || "")}</td></tr>
-  </table>
-
-  <h2>Kratak opis radova</h2>
+  <h2>Izvršeni radovi</h2>
   <div class="box" style="min-height:64px;white-space:pre-wrap;">${esc(radovi || "")}</div>
 
   <h2>Utrošeni materijal</h2>
@@ -300,20 +363,14 @@ function zapisnikHtml(nalog, firma) {
   <h2>Utvrđeno je da je na proizvodu još potrebno uraditi</h2>
   <div class="box" style="min-height:56px;white-space:pre-wrap;">${esc(nalog.zapJosPotrebno || "")}</div>
 
-  <p style="margin-top:16px;">U ${esc(nalog.zapMesto || nalog.adresaIntervencije || firma?.adresa || "_______________")}, dana ${fmtDay(nalog.zavrsenoAt || new Date())}</p>
+  <p style="margin-top:16px;">U ${esc(nalog.zapMesto || nalog.adresaIntervencije || firma?.adresa || "_______________")}, dana ${fmtDay(nalog.zapZavrsenoZapAt || nalog.zavrsenoAt || new Date())}</p>
+  ${zapisnikPotpisi(nalog)}`;
 
-  <div class="sig-row">
-    <div class="sig-box">
-      ${potpisNar ? `<img src="${esc(potpisNar.fajlUrl)}" alt="Za kupca">` : `<div class="sig-line"></div>`}
-      <div>ZA KUPCA</div>
-    </div>
-    <div class="sig-box">
-      ${potpisServ ? `<img src="${esc(potpisServ.fajlUrl)}" alt="Za servis">` : `<div class="sig-line"></div>`}
-      <div>ZA OVLAŠĆENI SERVIS${tehnicar ? `<br><span class="muted">${esc(tehnicar)}</span>` : ""}</div>
-    </div>
-  </div>`;
-
-  return htmlShell(`Zapisnik ${nalog.brojNaloga}`, body);
+  return htmlShell(`Zapisnik završeno ${nalog.brojNaloga}`, body);
 }
 
-module.exports = { nalogHtml, racunHtml, zapisnikHtml };
+function zapisnikHtml(nalog, firma) {
+  return zapisnikZavrsenoHtml(nalog, firma);
+}
+
+module.exports = { nalogHtml, racunHtml, zapisnikHtml, zapisnikZatecenoHtml, zapisnikZavrsenoHtml };

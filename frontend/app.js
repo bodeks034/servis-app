@@ -1742,12 +1742,27 @@ function attachDrag() {
       const id = e.dataTransfer.getData("text/plain");
       const noviStatus = drop.dataset.status;
       const nalog = nalozi.find((n) => n.id === id);
+      let forsiraj = false;
+      if ((noviStatus === "u_toku" || noviStatus === "ceka_delove") && nalog && !nalog.zapZatecenoAt) {
+        if (!confirm("Nije sačuvan zapisnik o zatečenom stanju (korak 1).\n\nIpak preći na rad?")) {
+          await ucitajSve(); render();
+          return;
+        }
+        forsiraj = true;
+      }
+      if (noviStatus === "zavrseno" && nalog && !nalog.zapZavrsenoZapAt) {
+        if (!confirm("Nije sačuvan zapisnik o završenom poslu (korak 3).\n\nIpak zatvoriti nalog?")) {
+          await ucitajSve(); render();
+          return;
+        }
+        forsiraj = true;
+      }
       if (nalog) nalog.status = noviStatus;
       render();
       try {
         await posaljiIliZakaziZaKasnije(
           `/nalozi/${id}/status`,
-          { method: "PATCH", body: JSON.stringify({ noviStatus }) },
+          { method: "PATCH", body: JSON.stringify({ noviStatus, forsiraj }) },
           `Status naloga → ${noviStatus}`
         );
       } catch (err) {
@@ -2304,6 +2319,10 @@ function renderDetalj() {
       </div>`;
   }
 
+  const imaZateceno = !!n.zapZatecenoAt;
+  const imaZavrsenoZap = !!n.zapZavrsenoZapAt;
+  const korak = !imaZateceno ? 1 : (!imaZavrsenoZap && n.status !== "zavrseno" ? 2 : (imaZavrsenoZap ? 3 : 2));
+
   document.getElementById("nalog-detalj-body").innerHTML = `
     <div class="detail-head">
       <div>
@@ -2312,12 +2331,22 @@ function renderDetalj() {
       </div>
       <button class="btn" id="zatvori-detalj">Zatvori</button>
     </div>
-    <div class="prilog-actions" style="margin-top:0;">
-      <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;">Štampaj radni nalog (papirni obrazac)</button>
-      ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
-      ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps">Snimi GPS</button>`}
+
+    <div class="workflow">
+      <div class="workflow-step ${imaZateceno ? "done" : ""} ${korak === 1 ? "active" : ""}">
+        <span class="num">1.</span> Zatečeno stanje
+        <span class="st">${imaZateceno ? "Sačuvano " + fmtDate(n.zapZatecenoAt) : "Prvo popuni pri dolasku"}</span>
+      </div>
+      <div class="workflow-step ${imaZateceno && !zatvoren ? "active" : ""} ${n.status === "u_toku" || n.status === "ceka_delove" ? "done" : ""} ${korak === 2 ? "active" : ""}">
+        <span class="num">2.</span> Radni nalog
+        <span class="st">${imaZateceno ? "Delovi, usluge, foto, status" : "Otključava se posle koraka 1"}</span>
+      </div>
+      <div class="workflow-step ${imaZavrsenoZap ? "done" : ""} ${korak === 3 ? "active" : ""}">
+        <span class="num">3.</span> Završeni posao
+        <span class="st">${imaZavrsenoZap ? "Sačuvano " + fmtDate(n.zapZavrsenoZapAt) : "Popuni kad je posao gotov"}</span>
+      </div>
     </div>
-    <p class="muted" style="margin:8px 0 12px;">PDF je isti layout kao Word „RADNI NALOG PRAZAN”: naručilac, vozilo, delovi, usluge, saglasnost, 3 potpisa.</p>
+
     <div class="detail-meta">
       <div><div class="k">Klijent</div><div class="v">${esc(n.klijent?.nazivIliIme || "—")}</div></div>
       <div><div class="k">Oprema</div><div class="v">${esc(n.oprema?.naziv || "—")}</div></div>
@@ -2325,6 +2354,56 @@ function renderDetalj() {
       <div><div class="k">Tehničar</div><div class="v">${n.dodeljeniTehnicar ? esc(n.dodeljeniTehnicar.ime + " " + n.dodeljeniTehnicar.prezime) : "Nedodeljen"}</div></div>
       <div><div class="k">SLA rok</div><div class="v">${n.slaRok ? fmtDate(n.slaRok) : "—"}</div></div>
       <div><div class="k">GPS</div><div class="v">${n.geoLat != null ? `${Number(n.geoLat).toFixed(5)}, ${Number(n.geoLng).toFixed(5)} (${fmtDate(n.geoAt)})` : "—"}</div></div>
+    </div>
+
+    <div class="section-title">1. Zapisnik o zatečenom stanju</div>
+    <p class="muted" style="margin:0 0 10px;">Popuni pri dolasku / prijemu — pre početka radova.</p>
+    <div class="field-row">
+      <div class="field"><label>Mesto</label>
+        <input id="d-zap-mesto" value="${esc(n.zapMesto || n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Vreme dolaska</label>
+        <input id="d-zap-dolazak" value="${esc(n.zapVremeDolaska || "")}" placeholder="npr. 08:30" ${zatvoren ? "disabled" : ""}></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Km / brojač pri dolasku</label>
+        <input id="d-zap-km-dolazak" type="number" value="${n.zapKmDolaska != null ? n.zapKmDolaska : (n.kmPriPrijemu != null ? n.kmPriPrijemu : "")}" ${zatvoren ? "disabled" : ""}></div>
+      <div class="field"><label>Stanje goriva</label>
+        <select id="d-gorivo" ${zatvoren ? "disabled" : ""}>
+          ${["", "prazan", "1/4", "1/2", "3/4", "pun"].map((g) =>
+            `<option value="${g}" ${(n.stanjeGoriva || "") === g ? "selected" : ""}>${g || "— nepoznato —"}</option>`
+          ).join("")}
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Zatečeno stanje</label>
+        <select id="d-zap-stanje-zat" ${zatvoren ? "disabled" : ""}>
+          <option value="">— izaberi —</option>
+          <option value="ispravan" ${n.zapStanjeZateceno === "ispravan" ? "selected" : ""}>Ispravno</option>
+          <option value="neispravan" ${n.zapStanjeZateceno === "neispravan" ? "selected" : ""}>Neispravno</option>
+        </select>
+      </div>
+      <div class="field"><label>Garancija</label>
+        <select id="d-zap-garancija" ${zatvoren ? "disabled" : ""}>
+          <option value="">— izaberi —</option>
+          <option value="garantni" ${n.zapGarancija === "garantni" ? "selected" : ""}>U garantnom roku</option>
+          <option value="vangaranti" ${n.zapGarancija === "vangaranti" ? "selected" : ""}>Vangaranti</option>
+        </select>
+      </div>
+    </div>
+    <div class="field"><label>Opis zatečenog stanja / reklamacija</label>
+      <textarea id="d-zap-opis-zat" ${zatvoren ? "disabled" : ""}>${esc(n.zapOpisZateceno || n.opis || "")}</textarea></div>
+    <div class="prilog-actions" style="margin-top:8px;">
+      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-zat-sacuvaj" style="width:auto;">Sačuvaj zapisnik o zatečenom stanju</button>`}
+      <button class="btn btn-sm" id="d-zap-zat-stampaj" style="width:auto;">Štampaj zatečeno stanje</button>
+    </div>
+
+    <div class="section-title">2. Radni nalog</div>
+    <p class="muted" style="margin:0 0 10px;">${imaZateceno ? "Unesi radove, delove i priloge — pa štampaj papirni nalog." : "Najpre sačuvaj korak 1 (zatečeno stanje)."}</p>
+    <div class="prilog-actions" style="margin-top:0;">
+      <button class="btn btn-sm btn-primary" id="d-pdf" style="width:auto;" ${imaZateceno ? "" : "disabled title=\"Prvo zatečeno stanje\""}>Štampaj radni nalog (papirni obrazac)</button>
+      ${n.opremaId ? `<button class="btn btn-sm" id="d-istorija-opreme">Istorija opreme</button>` : ""}
+      ${zatvoren ? "" : `<button class="btn btn-sm" id="d-gps">Snimi GPS</button>`}
     </div>
     <div class="status-actions">
       ${["novo", "u_toku", "ceka_delove", "zavrseno", "otkazano"].map((s) =>
@@ -2356,25 +2435,13 @@ function renderDetalj() {
         </select>
       </div>
     </div>
-    <div class="field-row">
-      <div class="field"><label>Stanje goriva</label>
-        <select id="d-gorivo" ${zatvoren ? "disabled" : ""}>
-          ${["", "prazan", "1/4", "1/2", "3/4", "pun"].map((g) =>
-            `<option value="${g}" ${(n.stanjeGoriva || "") === g ? "selected" : ""}>${g || "— nepoznato —"}</option>`
-          ).join("")}
-        </select>
-      </div>
-      <div class="field"><label>Km pri prijemu</label>
-        <input id="d-km-prijem" type="number" value="${n.kmPriPrijemu != null ? n.kmPriPrijemu : ""}" ${zatvoren ? "disabled" : ""}>
-      </div>
-    </div>
     <div class="field"><label>SLA rok</label>
       <input id="d-sla" type="datetime-local" value="${uDatetimeLocal(n.slaRok)}" ${zatvoren ? "disabled" : ""}></div>
     <div class="field"><label>Adresa intervencije</label>
       <input id="d-adresa" value="${esc(n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
-    <div class="field"><label>Opis / beleška sa terena</label>
+    <div class="field"><label>Beleška sa terena (rad)</label>
       <textarea id="d-opis" ${zatvoren ? "disabled" : ""}>${esc(n.opis || "")}</textarea></div>
-    ${zatvoren ? "" : `<div class="modal-actions" style="margin-top:0;"><button class="btn btn-primary" id="d-sacuvaj" style="width:auto;">Sačuvaj izmene</button></div>`}
+    ${zatvoren ? "" : `<div class="modal-actions" style="margin-top:0;"><button class="btn btn-primary" id="d-sacuvaj" style="width:auto;">Sačuvaj izmene naloga</button></div>`}
 
     <div class="section-title">Checklist (${checklist.filter((c) => c.zavrseno).length}/${checklist.length})</div>
     <div id="d-checklist">${checklistHtml}</div>
@@ -2424,27 +2491,17 @@ function renderDetalj() {
       <button class="btn btn-sm" id="d-dodaj-deo">Dodaj na nalog</button>
       <button class="btn btn-sm" id="d-rezervisi-deo">Rezerviši (bez skidanja)</button>
     `}
-    <div class="section-title">Zapisnik o izvršenim radovima (privremeni)</div>
-    <p class="muted" style="margin:0 0 10px;">Popuni terenske podatke — štampa kao poboljšani obrazac servisne službe.</p>
+    <div class="section-title">3. Zapisnik o završenom poslu</div>
+    <p class="muted" style="margin:0 0 10px;">Popuni kad su radovi gotovi — pre zatvaranja naloga.</p>
     <div class="field-row">
-      <div class="field"><label>Mesto</label>
-        <input id="d-zap-mesto" value="${esc(n.zapMesto || n.adresaIntervencije || "")}" ${zatvoren ? "disabled" : ""}></div>
       <div class="field"><label>Radno vreme</label>
         <input id="d-zap-radno" value="${esc(n.zapRadnoVreme || "")}" placeholder="npr. 2h 30min" ${zatvoren ? "disabled" : ""}></div>
-    </div>
-    <div class="field-row">
-      <div class="field"><label>Vreme dolaska</label>
-        <input id="d-zap-dolazak" value="${esc(n.zapVremeDolaska || "")}" placeholder="npr. 08:30" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Km dolazak</label>
-        <input id="d-zap-km-dolazak" type="number" value="${n.zapKmDolaska != null ? n.zapKmDolaska : ""}" ${zatvoren ? "disabled" : ""}></div>
-    </div>
-    <div class="field-row">
       <div class="field"><label>Vreme odlaska</label>
         <input id="d-zap-odlazak" value="${esc(n.zapVremeOdlaska || "")}" placeholder="npr. 11:00" ${zatvoren ? "disabled" : ""}></div>
-      <div class="field"><label>Km odlazak</label>
-        <input id="d-zap-km-odlazak" type="number" value="${n.zapKmOdlaska != null ? n.zapKmOdlaska : ""}" ${zatvoren ? "disabled" : ""}></div>
     </div>
     <div class="field-row">
+      <div class="field"><label>Km / brojač pri odlasku</label>
+        <input id="d-zap-km-odlazak" type="number" value="${n.zapKmOdlaska != null ? n.zapKmOdlaska : ""}" ${zatvoren ? "disabled" : ""}></div>
       <div class="field"><label>Proizvod ostavljen</label>
         <select id="d-zap-stanje" ${zatvoren ? "disabled" : ""}>
           <option value="">— izaberi —</option>
@@ -2452,19 +2509,12 @@ function renderDetalj() {
           <option value="neispravan" ${n.zapStanjeProizvoda === "neispravan" ? "selected" : ""}>Neispravno stanje</option>
         </select>
       </div>
-      <div class="field"><label>Garancija</label>
-        <select id="d-zap-garancija" ${zatvoren ? "disabled" : ""}>
-          <option value="">— izaberi —</option>
-          <option value="garantni" ${n.zapGarancija === "garantni" ? "selected" : ""}>U garantnom roku</option>
-          <option value="vangaranti" ${n.zapGarancija === "vangaranti" ? "selected" : ""}>Vangaranti</option>
-        </select>
-      </div>
     </div>
     <div class="field"><label>Još potrebno uraditi</label>
       <textarea id="d-zap-jos" ${zatvoren ? "disabled" : ""}>${esc(n.zapJosPotrebno || "")}</textarea></div>
     <div class="prilog-actions" style="margin-top:8px;">
-      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-sacuvaj" style="width:auto;">Sačuvaj zapisnik</button>`}
-      <button class="btn btn-sm" id="d-zap-stampaj" style="width:auto;">Štampaj zapisnik</button>
+      ${zatvoren ? "" : `<button class="btn btn-sm btn-primary" id="d-zap-zav-sacuvaj" style="width:auto;">Sačuvaj zapisnik o završenom poslu</button>`}
+      <button class="btn btn-sm" id="d-zap-zav-stampaj" style="width:auto;">Štampaj završeni posao</button>
     </div>
 
     ${n.racun ? `<p class="muted" style="margin-top:12px;">Račun: ${esc(n.racun.brojRacuna)} (${esc(n.racun.status)})</p>` : ""}
@@ -2477,29 +2527,55 @@ function renderDetalj() {
   if (pdfBtn) pdfBtn.onclick = () => otvoriPdf(`/nalozi/${n.id}/pdf`);
   const histBtn = document.getElementById("d-istorija-opreme");
   if (histBtn) histBtn.onclick = () => otvoriIstorijuOpreme(n.opremaId);
-  const zapStampaj = document.getElementById("d-zap-stampaj");
-  if (zapStampaj) zapStampaj.onclick = () => otvoriPdf(`/nalozi/${n.id}/zapisnik`);
-  const zapSacuvaj = document.getElementById("d-zap-sacuvaj");
-  if (zapSacuvaj) {
-    zapSacuvaj.onclick = async () => {
+  const zapZatStampaj = document.getElementById("d-zap-zat-stampaj");
+  if (zapZatStampaj) zapZatStampaj.onclick = () => otvoriPdf(`/nalozi/${n.id}/zapisnik/zateceno`);
+  const zapZavStampaj = document.getElementById("d-zap-zav-stampaj");
+  if (zapZavStampaj) zapZavStampaj.onclick = () => otvoriPdf(`/nalozi/${n.id}/zapisnik/zavrseno`);
+
+  const zapZatSacuvaj = document.getElementById("d-zap-zat-sacuvaj");
+  if (zapZatSacuvaj) {
+    zapZatSacuvaj.onclick = async () => {
       try {
+        const kmDol = document.getElementById("d-zap-km-dolazak").value || null;
         await api(`/nalozi/${n.id}`, {
           method: "PATCH",
           body: JSON.stringify({
             zapMesto: document.getElementById("d-zap-mesto").value.trim(),
-            zapRadnoVreme: document.getElementById("d-zap-radno").value.trim(),
             zapVremeDolaska: document.getElementById("d-zap-dolazak").value.trim(),
-            zapKmDolaska: document.getElementById("d-zap-km-dolazak").value || null,
-            zapVremeOdlaska: document.getElementById("d-zap-odlazak").value.trim(),
-            zapKmOdlaska: document.getElementById("d-zap-km-odlazak").value || null,
-            zapStanjeProizvoda: document.getElementById("d-zap-stanje").value || null,
+            zapKmDolaska: kmDol,
+            kmPriPrijemu: kmDol,
+            stanjeGoriva: document.getElementById("d-gorivo").value || null,
+            zapStanjeZateceno: document.getElementById("d-zap-stanje-zat").value || null,
             zapGarancija: document.getElementById("d-zap-garancija").value || null,
-            zapJosPotrebno: document.getElementById("d-zap-jos").value.trim(),
+            zapOpisZateceno: document.getElementById("d-zap-opis-zat").value.trim(),
+            potvrdiZateceno: true,
           }),
         });
         detaljNalog = await api(`/nalozi/${n.id}`);
         renderDetalj();
-        showToast("Zapisnik sačuvan");
+        showToast("Zapisnik o zatečenom stanju sačuvan");
+      } catch (e) { showToast(e.message); }
+    };
+  }
+
+  const zapZavSacuvaj = document.getElementById("d-zap-zav-sacuvaj");
+  if (zapZavSacuvaj) {
+    zapZavSacuvaj.onclick = async () => {
+      try {
+        await api(`/nalozi/${n.id}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            zapRadnoVreme: document.getElementById("d-zap-radno").value.trim(),
+            zapVremeOdlaska: document.getElementById("d-zap-odlazak").value.trim(),
+            zapKmOdlaska: document.getElementById("d-zap-km-odlazak").value || null,
+            zapStanjeProizvoda: document.getElementById("d-zap-stanje").value || null,
+            zapJosPotrebno: document.getElementById("d-zap-jos").value.trim(),
+            potvrdiZavrsenoZap: true,
+          }),
+        });
+        detaljNalog = await api(`/nalozi/${n.id}`);
+        renderDetalj();
+        showToast("Zapisnik o završenom poslu sačuvan");
       } catch (e) { showToast(e.message); }
     };
   }
@@ -2544,8 +2620,21 @@ function renderDetalj() {
 
   document.querySelectorAll("#nalog-detalj-body [data-status]").forEach((b) => {
     b.addEventListener("click", async () => {
+      const noviStatus = b.dataset.status;
+      let forsiraj = false;
+      if ((noviStatus === "u_toku" || noviStatus === "ceka_delove") && !n.zapZatecenoAt) {
+        if (!confirm("Nije sačuvan zapisnik o zatečenom stanju (korak 1).\n\nIpak preći na rad?")) return;
+        forsiraj = true;
+      }
+      if (noviStatus === "zavrseno" && !n.zapZavrsenoZapAt) {
+        if (!confirm("Nije sačuvan zapisnik o završenom poslu (korak 3).\n\nIpak zatvoriti nalog?")) return;
+        forsiraj = true;
+      }
       try {
-        await api(`/nalozi/${n.id}/status`, { method: "PATCH", body: JSON.stringify({ noviStatus: b.dataset.status }) });
+        await api(`/nalozi/${n.id}/status`, {
+          method: "PATCH",
+          body: JSON.stringify({ noviStatus, forsiraj }),
+        });
         await ucitajSve();
         detaljNalog = await api(`/nalozi/${n.id}`);
         renderDetalj();
@@ -2568,8 +2657,6 @@ function renderDetalj() {
             dodeljeniTehnicarId: document.getElementById("d-tehnicar").value || null,
             zakazanoZa: izDatetimeLocal(document.getElementById("d-zakazano").value),
             slaRok: izDatetimeLocal(document.getElementById("d-sla").value),
-            stanjeGoriva: document.getElementById("d-gorivo").value || null,
-            kmPriPrijemu: document.getElementById("d-km-prijem").value || null,
           }),
         });
         const i = nalozi.findIndex((x) => x.id === n.id);

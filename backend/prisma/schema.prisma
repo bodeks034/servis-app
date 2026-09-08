@@ -225,16 +225,21 @@ model RadniNalog {
   geoAt               DateTime?    @map("geo_at")
   stanjeGoriva        String?      @map("stanje_goriva") // prazan | 1/4 | 1/2 | 3/4 | pun
   kmPriPrijemu        Int?         @map("km_pri_prijemu")
-  // Zapisnik o izvršenim radovima (privremeni / terenski)
+  // 1) Zapisnik o zatečenom stanju (pre rada)
   zapMesto            String?      @map("zap_mesto")
-  zapRadnoVreme       String?      @map("zap_radno_vreme")
   zapVremeDolaska     String?      @map("zap_vreme_dolaska")
   zapKmDolaska        Int?         @map("zap_km_dolaska")
+  zapStanjeZateceno   String?      @map("zap_stanje_zateceno") // ispravan | neispravan
+  zapOpisZateceno     String?      @map("zap_opis_zateceno")
+  zapGarancija        String?      @map("zap_garancija") // garantni | vangaranti
+  zapZatecenoAt       DateTime?    @map("zap_zateceno_at")
+  // 3) Zapisnik o završenom poslu (posle rada)
+  zapRadnoVreme       String?      @map("zap_radno_vreme")
   zapVremeOdlaska     String?      @map("zap_vreme_odlaska")
   zapKmOdlaska        Int?         @map("zap_km_odlaska")
-  zapStanjeProizvoda  String?      @map("zap_stanje_proizvoda") // ispravan | neispravan
-  zapGarancija        String?      @map("zap_garancija") // garantni | vangaranti
+  zapStanjeProizvoda  String?      @map("zap_stanje_proizvoda") // ispravan | neispravan (ostavljeno)
   zapJosPotrebno      String?      @map("zap_jos_potrebno")
+  zapZavrsenoZapAt    DateTime?    @map("zap_zavrseno_zap_at")
   createdAt           DateTime     @default(now()) @map("created_at")
   updatedAt           DateTime     @updatedAt @map("updated_at")
 

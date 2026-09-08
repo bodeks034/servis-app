@@ -7,7 +7,7 @@ const { containsText } = require("../lib/search");
 const { sledeciBrojNaloga } = require("../lib/brojevi");
 const { centralniMagacin, magacinZaUtrošak } = require("../lib/magacin");
 const { uploadPrilog, obrisiFajlAkoJeUStorage } = require("../lib/storage");
-const { nalogHtml, zapisnikHtml } = require("../lib/pdfHtml");
+const { nalogHtml, zapisnikHtml, zapisnikZatecenoHtml, zapisnikZavrsenoHtml } = require("../lib/pdfHtml");
 const { stavkeZaTipUsluge, izracunajSlaRok } = require("../lib/checklist");
 const { upisiAudit } = require("../lib/audit");
 const { obavestiOStatusuNaloga, obavestiOZakazivanju } = require("../lib/notifikacije");
@@ -204,6 +204,24 @@ router.patch("/:id/status", asyncHandler(async (req, res) => {
     throw new HttpError(403, "Ovaj nalog nije dodeljen vama.");
   }
 
+  const forsiraj = req.body.forsiraj === true || req.body.forsira === true;
+  if (
+    !forsiraj &&
+    (noviStatus === "u_toku" || noviStatus === "ceka_delove") &&
+    !postojeci.zapZatecenoAt
+  ) {
+    throw new HttpError(
+      400,
+      "Prvo sačuvajte zapisnik o zatečenom stanju (korak 1), pa tek onda pređite na rad."
+    );
+  }
+  if (!forsiraj && noviStatus === "zavrseno" && !postojeci.zapZavrsenoZapAt) {
+    throw new HttpError(
+      400,
+      "Prvo sačuvajte zapisnik o završenom poslu (korak 3), pa tek onda zatvorite nalog."
+    );
+  }
+
   const data = {
     status: noviStatus,
     zavrsenoAt: noviStatus === "zavrseno" ? new Date() : postojeci.zavrsenoAt,
@@ -382,6 +400,7 @@ router.patch("/:id", asyncHandler(async (req, res) => {
     dodeljeniTehnicarId, zakazanoZa, slaRok, stanjeGoriva, kmPriPrijemu,
     zapMesto, zapRadnoVreme, zapVremeDolaska, zapKmDolaska,
     zapVremeOdlaska, zapKmOdlaska, zapStanjeProizvoda, zapGarancija, zapJosPotrebno,
+    zapStanjeZateceno, zapOpisZateceno, potvrdiZateceno, potvrdiZavrsenoZap,
   } = req.body;
 
   const data = {};
@@ -422,9 +441,19 @@ router.patch("/:id", asyncHandler(async (req, res) => {
       ? zapStanjeProizvoda
       : null;
   }
+  if (zapStanjeZateceno !== undefined) {
+    data.zapStanjeZateceno = ["ispravan", "neispravan"].includes(zapStanjeZateceno)
+      ? zapStanjeZateceno
+      : null;
+  }
+  if (zapOpisZateceno !== undefined) {
+    data.zapOpisZateceno = zapOpisZateceno ? String(zapOpisZateceno).trim() : null;
+  }
   if (zapGarancija !== undefined) {
     data.zapGarancija = ["garantni", "vangaranti"].includes(zapGarancija) ? zapGarancija : null;
   }
+  if (potvrdiZateceno === true) data.zapZatecenoAt = new Date();
+  if (potvrdiZavrsenoZap === true) data.zapZavrsenoZapAt = new Date();
   if (dodeljeniTehnicarId !== undefined) {
     if (req.user.uloga === "tehnicar") {
       throw new HttpError(403, "Tehničar ne može da preusmeri nalog.");
@@ -626,8 +655,7 @@ router.get("/:id/pdf", asyncHandler(async (req, res) => {
   res.send(nalogHtml(nalog, nalog.firma));
 }));
 
-// GET /api/nalozi/:id/zapisnik — privremeni zapisnik o izvršenim radovima
-router.get("/:id/zapisnik", asyncHandler(async (req, res) => {
+async function ucitajNalogZaZapisnik(req) {
   const nalog = await prisma.radniNalog.findFirst({
     where: filterZaUlogu(req, { id: req.params.id, firmaId: req.user.firmaId }),
     include: {
@@ -639,6 +667,26 @@ router.get("/:id/zapisnik", asyncHandler(async (req, res) => {
     },
   });
   if (!nalog) throw new HttpError(404, "Nalog nije pronađen.");
+  return nalog;
+}
+
+// GET /api/nalozi/:id/zapisnik/zateceno — korak 1
+router.get("/:id/zapisnik/zateceno", asyncHandler(async (req, res) => {
+  const nalog = await ucitajNalogZaZapisnik(req);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(zapisnikZatecenoHtml(nalog, nalog.firma));
+}));
+
+// GET /api/nalozi/:id/zapisnik/zavrseno — korak 3
+router.get("/:id/zapisnik/zavrseno", asyncHandler(async (req, res) => {
+  const nalog = await ucitajNalogZaZapisnik(req);
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.send(zapisnikZavrsenoHtml(nalog, nalog.firma));
+}));
+
+// GET /api/nalozi/:id/zapisnik — alias za završeni (kompatibilnost)
+router.get("/:id/zapisnik", asyncHandler(async (req, res) => {
+  const nalog = await ucitajNalogZaZapisnik(req);
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.send(zapisnikHtml(nalog, nalog.firma));
 }));
